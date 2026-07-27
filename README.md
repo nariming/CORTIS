@@ -82,30 +82,82 @@ CORTIS는 3개 모듈이 순환 구조로 연결되며, **C가 메인 AI 추론 
 
 ```
 cortis/
-├── backend/          # FastAPI 서버 + AI 추론 파이프라인
-│   ├── routers/          # API 엔드포인트
-│   ├── engine_c/         # C: 임베딩·유사 코호트 검색·LLM 추론
-│   ├── matcher_a/        # A: 정책 매칭 로직
-│   ├── repayment_b/      # B: MAD 버퍼·넛지 문구 생성
-│   └── db/               # MySQL 스키마, 시드 스크립트
+├── backend/                  # FastAPI 서버 + 데이터 계층 (개발자1)
+│   ├── main.py                   # 앱 엔트리포인트
+│   ├── config.py                 # .env 기반 설정
+│   ├── schemas.py                # API 요청/응답 스키마
+│   ├── embedding_compat.py       # 임베딩 호환 레이어 (C파트 구현 우선 사용)
+│   ├── db/
+│   │   ├── schema.sql                # MySQL DDL (원본)
+│   │   ├── models.py                 # SQLAlchemy ORM
+│   │   ├── database.py               # 엔진/세션
+│   │   └── seed/                     # 정책·대출상품·데모유저·코호트 적재
+│   ├── repositories/             # cohort_repo(C엔진 연동), event_repo
+│   ├── matcher_a/                # A: 규칙기반 이벤트 감지 + 정책 자격 매칭
+│   ├── routers/                  # API 엔드포인트
+│   └── tests/test_smoke.py       # MySQL 없이 SQLite로 도는 배선 검증
 │
-├── data/             # 합성 코호트 시퀀스, 데모용 유저 A/B 데이터
-└── doc/              # 기획서(PPT), 팀 문서
+├── pipeline/                 # C: 임베딩·유사 코호트 검색·LLM 추론 (개발자2)
+├── data/                     # 합성 코호트 300개 시퀀스
+└── doc/                      # 기획서(PPT), 팀 문서
 ```
 
 ## 실행 및 데모
 
+### 1. 준비
+
 ```bash
-cd backend
-pip install -r requirements.txt
+python -m venv .venv
+.venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
+pip install -r backend/requirements.txt
 
-# .env 파일에 DB 접속 정보 설정
-DATABASE_URL=mysql://...
-
-uvicorn main:app --reload
+copy backend\.env.example backend\.env    # macOS/Linux: cp
+# backend/.env 를 열어 MYSQL_PASSWORD 만 본인 로컬 값으로 채운다
 ```
 
-Swagger UI: http://localhost:8000/docs
+### 2. DB 생성 + 시드 (한 번만)
+
+```bash
+python -m backend.db.seed.run_all
+```
+
+`cortis` 데이터베이스 생성 → 테이블 9개 → 정책 15건·대출상품 6건·데모 유저 A/B·코호트 300건(임베딩 포함)까지 한 번에 적재된다.
+
+### 3. 서버 실행
+
+```bash
+uvicorn backend.main:app --reload
+```
+
+Swagger UI: http://localhost:8000/docs · 상태 확인: http://localhost:8000/health
+
+> MySQL 설치 전이라도 `python -m backend.tests.test_smoke` 로 감지→확정→정책매칭 배선을 SQLite에서 검증할 수 있다.
+
+## 모듈 간 연동 규약
+
+C엔진(개발자2)이 백엔드(개발자1)와 주고받는 지점은 아래 네 개다.
+
+| 방향 | 엔드포인트 | 용도 |
+| --- | --- | --- |
+| 읽기 | `GET /cohorts` | 코호트 시퀀스 + 임베딩 벡터. 응답을 그대로 `CohortIndex.load_from_mysql_rows()` 에 전달 |
+| 읽기 | `GET /users/{id}/history` | 확정 이벤트 히스토리 + 콜드스타트 여부 + LLM 프롬프트용 `user_context` |
+| 쓰기 | `POST /users/{id}/predictions` | 추론 결과 저장 (근거 코호트 top-k까지 함께 보관) |
+| 쓰기 | `POST /users/{id}/policy-match` | 예측 이벤트를 A파트에 넘겨 정책 자격 재판단 |
+
+같은 프로세스에서 돌릴 때는 HTTP 없이 `backend.repositories.cohort_repo.load_cohort_rows(db)` 를 직접 호출해도 형태가 동일하다.
+
+**Agentic 순환 고리** — 이벤트 확정이 트리거다.
+
+```
+POST /users/{id}/detect          거래내역 스캔 → 이벤트 후보(detected)
+POST /events/{event_id}/confirm  사용자 확인 → confirmed 승격
+GET  /users/{id}/history         갱신된 히스토리
+   → C엔진 재검색·재예측
+POST /users/{id}/predictions     예측 결과 저장
+POST /users/{id}/policy-match    A파트 정책 재탐색
+```
+
+**임베딩 정합성**: 코호트 적재 때 쓴 임베딩과 검색 때 쓰는 임베딩이 같아야 유사도가 의미를 갖는다. `cohort_sequences.embedding_model` 에 모델명을 함께 저장하고, 조회 시 같은 모델 벡터만 로드한다. `EMBEDDING_BACKEND` 를 바꾸면 `python -m backend.db.seed.run_all --no-drop` 로 재적재할 것.
 
 ## 기대 효과 및 학술적 의의
 
