@@ -132,6 +132,7 @@ uvicorn backend.main:app --reload
 Swagger UI: http://localhost:8000/docs · 상태 확인: http://localhost:8000/health
 
 > MySQL 설치 전이라도 `python -m backend.tests.test_smoke` 로 감지→확정→정책매칭 배선을 SQLite에서 검증할 수 있다.
+> 배포된 데모 url 필요해지면 rds나 planetScale 같은 걸 붙이면 됨 (스키마도 지금 그대로)
 
 ## 모듈 간 연동 규약
 
