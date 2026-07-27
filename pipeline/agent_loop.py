@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 from .similarity import CohortIndex
 from .reasoning import Reasoner, PredictionResult
+from .contracts import PolicyPrefetchRequest, RepaymentReplanRequest
 
 
 @dataclass
@@ -29,19 +30,51 @@ class CortisAgent:
         self,
         index: CohortIndex,
         reasoner: Reasoner,
-        on_predict_callback: Optional[Callable[[str, PredictionResult], None]] = None,
+        on_predict_callback: Optional[Callable[[str, PredictionResult, List[str]], None]] = None,
         top_k: int = 5,
     ):
         self.index = index
         self.reasoner = reasoner
         self.top_k = top_k
-        # A/B 재호출 스텁 — 개발자1의 API가 준비되면 실제 호출로 교체
+        # A/B 재호출 콜백 — 개발자1의 API가 준비되면 이 함수 안의 print를
+        # requests.post(A_ENDPOINT, json=request.to_json()) 형태로 바꾸기만 하면 됨
         self.on_predict_callback = on_predict_callback or self._default_stub_callback
 
-    def _default_stub_callback(self, user_id: str, result: PredictionResult):
+    def _default_stub_callback(self, user_id: str, result: PredictionResult, updated_history: List[str]):
+        """지금은 실제로 호출할 A/B 엔드포인트가 없어서, '이런 요청을 이런 형태로 보낼 것이다'를
+        실제 요청 객체(contracts.py)로 만들어서 JSON으로 출력만 한다.
+
+        재령이 API 완성되면 아래 print(...) 자리를 그대로 이렇게 바꾸면 됨:
+            import requests
+            requests.post("http://재령이서버주소/api/policy/prefetch", json=asdict(prefetch_req))
+        """
         print(f"  [STUB] A/B 재호출 트리거 (user={user_id})")
-        for prep in result.suggested_preparations:
-            print(f"  [STUB] -> A파트에 '{prep['event']}' 관련 정책 사전조회 요청: {prep['action']}")
+
+        # B파트: 상환계획 재설계 요청 (이벤트 확정 자체가 트리거)
+        replan_req = RepaymentReplanRequest(
+            user_id=user_id,
+            confirmed_event=updated_history[-1] if updated_history else "",
+            updated_history=updated_history,
+            trigger_reason="생애주기 이벤트 확정으로 인한 재설계",
+        )
+        print("  [STUB] -> B파트 요청 (실제 연결 시 POST /api/repayment/replan):")
+        print("    " + replan_req.to_json().replace("\n", "\n    "))
+
+        # A파트: 예측된 각 후보 이벤트에 대해 정책 사전조회 요청
+        for pred in result.predictions:
+            prefetch_req = PolicyPrefetchRequest(
+                user_id=user_id,
+                predicted_event=pred["event"],
+                evidence_count=pred.get("evidence_count", 0),
+                confidence_level=result.confidence_level,
+                reasoning=pred.get("reasoning", ""),
+                requested_action=next(
+                    (p["action"] for p in result.suggested_preparations if p["event"] == pred["event"]),
+                    f"{pred['event']} 관련 정책 사전조회",
+                ),
+            )
+            print(f"  [STUB] -> A파트 요청 (실제 연결 시 POST /api/policy/prefetch, event={pred['event']}):")
+            print("    " + prefetch_req.to_json().replace("\n", "\n    "))
 
     def on_event_confirmed(self, state: AgentState, new_event: str, user_context: Optional[str] = None) -> PredictionResult:
         """이벤트가 규칙기반 감지+확인질문을 거쳐 '확정'되었을 때 호출되는 진입점.
@@ -60,5 +93,5 @@ class CortisAgent:
             user_context=user_context,
         )
 
-        self.on_predict_callback(state.user_id, result)
+        self.on_predict_callback(state.user_id, result, state.confirmed_history)
         return result
