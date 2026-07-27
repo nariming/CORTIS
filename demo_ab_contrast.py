@@ -17,7 +17,7 @@ from pipeline.similarity import CohortIndex
 from pipeline.reasoning import get_reasoner
 from pipeline.agent_loop import CortisAgent, AgentState
 from data.cohort_sequences_300 import COHORT_SEQUENCES_300 as COHORT_SEQUENCES
-from data.dummy_cohorts import DEMO_USER_A, DEMO_USER_B
+from data.dummy_cohorts import DEMO_USER_KIMHANEUL, DEMO_USER_CONTRAST
 
 
 def run():
@@ -26,9 +26,9 @@ def run():
     index.build_from_sequences(COHORT_SEQUENCES)
 
     reasoner = get_reasoner()
-    agent = CortisAgent(index, reasoner, top_k=5)
+    agent = CortisAgent(index, reasoner, top_k=15)
 
-    for demo_user in (DEMO_USER_A, DEMO_USER_B):
+    for demo_user in (DEMO_USER_KIMHANEUL, DEMO_USER_CONTRAST):
         print(f"\n{'=' * 60}")
         print(f"유저: {demo_user['user_id']}")
         print(f"확정 히스토리: {' -> '.join(demo_user['confirmed_history'])}")
