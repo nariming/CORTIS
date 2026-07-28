@@ -8,8 +8,10 @@ CohortIndex에 로드하는 연결 모듈.
 """
 
 import requests
+import datetime
 from pipeline.embedding import EmbeddingProvider
 from pipeline.similarity import CohortIndex
+from pipeline.contracts import PredictionSaveRequest, PolicyMatchRequest
 
 BACKEND_BASE_URL = "http://localhost:8000"
 
@@ -35,3 +37,69 @@ def load_cohort_index_from_backend(embedder: EmbeddingProvider, base_url: str = 
     index = CohortIndex(embedder)
     index.load_from_mysql_rows(rows)
     return index
+
+
+def get_user_history(user_id: str, base_url: str = BACKEND_BASE_URL) -> dict:
+    """GET /users/{user_id}/history 호출."""
+    resp = requests.get(f"{base_url}/users/{user_id}/history", timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def create_life_event(user_id: str, event_type: str, base_url: str = BACKEND_BASE_URL) -> dict:
+    """POST /users/{user_id}/events 호출해서 이벤트를 '확정' 상태로 등록하고,
+    응답(event_id 포함)을 그대로 반환.
+    """
+    payload = {
+        "event_type": event_type,
+        "occurred_at": datetime.date.today().isoformat(),
+        "status": "confirmed",
+        "confidence": 1.0,
+    }
+    resp = requests.post(f"{base_url}/users/{user_id}/events", json=payload, timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def save_prediction(
+    user_id: str,
+    trigger_event_id: int,
+    input_history: list,
+    predictions: list,
+    confidence_level: str,
+    confidence_note: str,
+    matched_cohorts: list,
+    base_url: str = BACKEND_BASE_URL,
+) -> dict:
+    """POST /users/{user_id}/predictions 호출해서 예측 결과를 저장하고,
+    응답(prediction_id 포함)을 그대로 반환.
+    """
+    req = PredictionSaveRequest(
+        trigger_event_id=trigger_event_id,
+        input_history=input_history,
+        predictions=predictions,
+        confidence_level=confidence_level,
+        confidence_note=confidence_note,
+        matched_cohorts=matched_cohorts,
+    )
+    resp = requests.post(f"{base_url}/users/{user_id}/predictions", json=asdict_safe(req), timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def request_policy_match(
+    user_id: str,
+    prediction_id: int,
+    event_types: list,
+    base_url: str = BACKEND_BASE_URL,
+) -> dict:
+    """POST /users/{user_id}/policy-match 호출해서 A파트 정책 매칭을 실제로 요청."""
+    req = PolicyMatchRequest(prediction_id=prediction_id, event_types=event_types)
+    resp = requests.post(f"{base_url}/users/{user_id}/policy-match", json=asdict_safe(req), timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def asdict_safe(dataclass_obj) -> dict:
+    from dataclasses import asdict
+    return asdict(dataclass_obj)
