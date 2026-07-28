@@ -12,14 +12,16 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+import sys
 from dataclasses import asdict
 
 from pipeline.embedding import get_embedding_provider
 from pipeline.reasoning import get_reasoner
 from pipeline import backend_client as bc
 
-USER_ID = "U_A"  # 김하늘
-NEW_EVENT = "취업"
+# 명령줄 인자로 유저/이벤트 지정 가능: python demo_full_flow.py U_B 이직
+USER_ID = sys.argv[1] if len(sys.argv) > 1 else "U_A"
+NEW_EVENT = sys.argv[2] if len(sys.argv) > 2 else "취업"
 
 
 def run():
