@@ -13,6 +13,10 @@ from typing import List, Optional
 
 from .similarity import CohortMatch
 
+# backend/.env 의 COLD_START_THRESHOLD 와 반드시 같은 값을 참조해야 한다.
+# (재령이 백엔드 설정과 여기 값이 따로 놀면, 콜드스타트 판단 기준이 두 곳에서 어긋날 수 있음)
+COLD_START_THRESHOLD = int(os.environ.get("COLD_START_THRESHOLD", "2"))
+
 SYSTEM_PROMPT = """당신은 청년 금융 생애주기 이벤트를 예측하는 분석 엔진입니다.
 검색된 유사 코호트 사례만을 근거로 사용하고, 근거 없는 확률을 지어내지 마세요.
 반드시 아래 JSON 스키마로만 응답하세요. 다른 텍스트를 추가하지 마세요.
@@ -95,7 +99,7 @@ class MockReasoner(Reasoner):
             for event, count in next_event_counts.items()
         ]
 
-        is_cold_start = len(confirmed_history) < 2 or len(matches) < 2
+        is_cold_start = len(confirmed_history) < COLD_START_THRESHOLD or len(matches) < COLD_START_THRESHOLD
         confidence = "low" if is_cold_start else (
             "high" if predictions and predictions[0]["evidence_count"] >= 3 else "medium"
         )
@@ -148,7 +152,7 @@ class AnthropicReasoner(Reasoner):
             raise
 
         # 콜드스타트는 LLM 판단에만 맡기지 않고 코드로 강제 (방어 목적)
-        is_cold_start = len(confirmed_history) < 2 or len(matches) < 2
+        is_cold_start = len(confirmed_history) < COLD_START_THRESHOLD or len(matches) < COLD_START_THRESHOLD
         if is_cold_start:
             data["confidence_level"] = "low"
             data["confidence_note"] = "초기 데이터 부족으로 신뢰도가 낮음 (코드 레벨에서 강제)"

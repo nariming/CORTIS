@@ -10,8 +10,10 @@
 """
 
 from dotenv import load_dotenv
-load_dotenv()  # 같은 폴더의 .env 파일에서 ANTHROPIC_API_KEY, LLM_BACKEND 등을 자동으로 읽어옴
+load_dotenv()  # 최상위 .env: ANTHROPIC_API_KEY, LLM_BACKEND
+load_dotenv("backend/.env")  # backend/.env: COHORT_TOP_K, COLD_START_THRESHOLD (재령이 설정과 통일)
 
+import os
 from pipeline.embedding import get_embedding_provider
 from pipeline.similarity import CohortIndex
 from pipeline.reasoning import get_reasoner
@@ -26,7 +28,7 @@ def run():
     index.build_from_sequences(COHORT_SEQUENCES)
 
     reasoner = get_reasoner()
-    agent = CortisAgent(index, reasoner, top_k=15)
+    agent = CortisAgent(index, reasoner, top_k=int(os.environ.get("COHORT_TOP_K", "15")))
 
     for demo_user in (DEMO_USER_KIMHANEUL, DEMO_USER_CONTRAST):
         print(f"\n{'=' * 60}")

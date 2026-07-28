@@ -91,10 +91,15 @@ def request_policy_match(
     user_id: str,
     prediction_id: int,
     event_types: list,
+    include_ineligible: bool = False,
     base_url: str = BACKEND_BASE_URL,
 ) -> dict:
     """POST /users/{user_id}/policy-match 호출해서 A파트 정책 매칭을 실제로 요청."""
-    req = PolicyMatchRequest(prediction_id=prediction_id, event_types=event_types)
+    req = PolicyMatchRequest(
+        prediction_id=prediction_id,
+        event_types=event_types,
+        include_ineligible=include_ineligible,
+    )
     resp = requests.post(f"{base_url}/users/{user_id}/policy-match", json=asdict_safe(req), timeout=10)
     resp.raise_for_status()
     return resp.json()

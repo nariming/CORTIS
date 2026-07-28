@@ -10,7 +10,9 @@
 
 from dotenv import load_dotenv
 load_dotenv()
+load_dotenv("backend/.env")
 
+import os
 from pipeline.embedding import get_embedding_provider
 from pipeline.backend_client import load_cohort_index_from_backend
 from pipeline.reasoning import get_reasoner
@@ -26,7 +28,7 @@ def run():
     print("코호트 로드 완료.\n")
 
     reasoner = get_reasoner()
-    agent = CortisAgent(index, reasoner, top_k=15)
+    agent = CortisAgent(index, reasoner, top_k=int(os.environ.get("COHORT_TOP_K", "15")))
 
     for demo_user in (DEMO_USER_KIMHANEUL, DEMO_USER_CONTRAST):
         print(f"\n{'=' * 60}")
