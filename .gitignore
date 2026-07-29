@@ -1,0 +1,15 @@
+.env
+__pycache__/
+*.pyc
+
+# 가상환경
+.venv/
+venv/
+
+# Windows / OneDrive
+desktop.ini
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
