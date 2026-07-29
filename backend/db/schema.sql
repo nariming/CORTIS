@@ -55,15 +55,30 @@ CREATE TABLE users (
 
 -- ---------------------------------------------------------------------
 -- 2. loan_products : KB 대출 상품 카탈로그
+--    policies와 마찬가지로 자격요건을 정형 컬럼으로 갖는다 + trigger_events로
+--    "이 이벤트가 예측/확정되면 이 상품도 재판단하라"는 역인덱스를 건다.
+--    (예: 독립(월세) 예측 → KB 청년 보증부월세대출 자격 사전 안내)
+--    min_rate/max_rate는 이미 있던 필드라, 유저의 기존 대출 금리와 비교해
+--    "갈아타면 절감되는 금액"을 계산하는 데 그대로 쓸 수 있다.
 -- ---------------------------------------------------------------------
 CREATE TABLE loan_products (
-    product_id    VARCHAR(32)  NOT NULL,
-    product_name  VARCHAR(100) NOT NULL,
-    product_type  ENUM('전월세자금','신용대출','학자금','사업자','마이너스통장') NOT NULL,
-    min_rate      DECIMAL(4,2) NOT NULL,
-    max_rate      DECIMAL(4,2) NOT NULL,
-    max_amount    BIGINT       NOT NULL,
-    target_desc   VARCHAR(255) NULL,
+    product_id          VARCHAR(32)  NOT NULL,
+    product_name        VARCHAR(100) NOT NULL,
+    product_type        ENUM('전월세자금','신용대출','학자금','사업자','마이너스통장') NOT NULL,
+    min_rate             DECIMAL(4,2) NOT NULL,
+    max_rate             DECIMAL(4,2) NOT NULL,
+    max_amount           BIGINT       NOT NULL,
+    target_desc          VARCHAR(255) NULL,
+    -- --- 정형 자격요건 (NULL = 해당 조건 없음, policies와 동일 규약) ---
+    min_age              TINYINT      NULL,
+    max_age              TINYINT      NULL,
+    max_annual_income    BIGINT       NULL COMMENT '연소득 상한(원)',
+    allowed_employment   JSON         NULL COMMENT '["프리랜서","플랫폼노동"] 형태. NULL이면 고용형태 무관',
+    allowed_housing      JSON         NULL COMMENT '["월세","전세"] 형태',
+    allowed_marital      JSON         NULL COMMENT '["미혼","기혼"] 형태',
+    region_code          VARCHAR(10)  NULL COMMENT 'NULL이면 전국',
+    -- --- C엔진 연동 ---
+    trigger_events        JSON         NOT NULL COMMENT '["독립(월세)"] — 이 이벤트 확정/예측 시 자격 재판단 대상',
     PRIMARY KEY (product_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -114,8 +129,16 @@ CREATE TABLE policies (
     -- --- C엔진 연동 ---
     trigger_events      JSON         NOT NULL COMMENT '["독립(월세)","결혼"] — 이 이벤트 확정/예측 시 자격 재판단 대상',
     priority            TINYINT      NOT NULL DEFAULT 5 COMMENT '동점일 때 노출 우선순위(1이 높음)',
+    -- --- 절감액/혜택 계산용 정량 필드 (NULL 허용 — 정책 상당수가 지원내용을 자유텍스트로만 제공) ---
+    benefit_amount_krw   BIGINT       NULL COMMENT '1회성 또는 총 정액 지원금(원). 예: 청년월세지원 월20만x12개월=2,400,000',
+    benefit_period_month SMALLINT     NULL COMMENT '정액 지원이 지속되는 개월수 (정액지원형 정책만 해당)',
+    benefit_rate_pct     DECIMAL(4,2) NULL COMMENT '금리 인하/우대 폭 또는 적용 금리(%p). 대출성 정책만 해당',
+    -- --- 데이터 출처 (온통청년 API 실연동 vs 수작업 큐레이션) ---
+    source               ENUM('manual','youthcenter_api') NOT NULL DEFAULT 'manual',
+    external_policy_no   VARCHAR(30)  NULL COMMENT '온통청년 정책번호(plcyNo). 재적재 시 upsert 매칭 키',
     PRIMARY KEY (policy_id),
-    KEY idx_policies_category (category)
+    KEY idx_policies_category (category),
+    KEY idx_policies_external (external_policy_no)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 

@@ -112,7 +112,8 @@ python -m venv .venv
 pip install -r backend/requirements.txt
 
 copy backend\.env.example backend\.env    # macOS/Linux: cp
-# backend/.env 를 열어 MYSQL_PASSWORD 만 본인 로컬 값으로 채운다
+# backend/.env 를 열어 MYSQL_PASSWORD 를 채운다.
+# YOUTHCENTER_API_KEY(온통청년 오픈API 인증키)도 있으면 넣는다 — 없어도 시드는 정상 진행된다.
 ```
 
 ### 2. DB 생성 + 시드 (한 번만)
@@ -121,7 +122,15 @@ copy backend\.env.example backend\.env    # macOS/Linux: cp
 python -m backend.db.seed.run_all
 ```
 
-`cortis` 데이터베이스 생성 → 테이블 9개 → 정책 15건·대출상품 6건·데모 유저 A/B·코호트 300건(임베딩 포함)까지 한 번에 적재된다.
+`cortis` 데이터베이스 생성 → 테이블 9개 → 대출상품 6건 + 정책 15건(수작업 큐레이션) 적재 →
+온통청년 오픈API 실 데이터 적재 시도(키 없거나 호출 실패 시 경고만 찍고 자동 스킵, 나머지 단계엔 영향 없음) →
+데모 유저 A/B → 코호트 300건(임베딩 포함) 순으로 한 번에 적재된다.
+
+> ⚠️ 온통청년 API(`www.youthcenter.go.kr:8080`)는 이 프로젝트를 만든 개발 환경에서는
+> 아웃바운드 연결 자체가 막혀 있어 실 응답을 검증하지 못했다. 필드 매핑
+> (`backend/integrations/youthcenter_mapper.py`)은 공개 문서 기준 best-effort이니,
+> 로컬에서 처음 돌릴 때 `python -m backend.integrations.youthcenter_client` 로 실제
+> 응답의 필드명을 한 번 확인하고, 이상하면 `FIELD_CANDIDATES` 만 조정하면 된다.
 
 ### 3. 서버 실행
 
@@ -144,6 +153,7 @@ C엔진(개발자2)이 백엔드(개발자1)와 주고받는 지점은 아래 �
 | 읽기 | `GET /users/{id}/history` | 확정 이벤트 히스토리 + 콜드스타트 여부 + LLM 프롬프트용 `user_context` |
 | 쓰기 | `POST /users/{id}/predictions` | 추론 결과 저장 (근거 코호트 top-k까지 함께 보관) |
 | 쓰기 | `POST /users/{id}/policy-match` | 예측 이벤트를 A파트에 넘겨 정책 자격 재판단 |
+| 쓰기 | `POST /users/{id}/loan-match` | 예측 이벤트를 A파트에 넘겨 KB 대출상품 자격 재판단 (min_rate/max_rate 포함 — B파트 절감액 계산 입력) |
 
 같은 프로세스에서 돌릴 때는 HTTP 없이 `backend.repositories.cohort_repo.load_cohort_rows(db)` 를 직접 호출해도 형태가 동일하다.
 
@@ -160,6 +170,8 @@ POST /users/{id}/policy-match    A파트 정책 재탐색
 
 **임베딩 정합성**: 코호트 적재 때 쓴 임베딩과 검색 때 쓰는 임베딩이 같아야 유사도가 의미를 갖는다. `cohort_sequences.embedding_model` 에 모델명을 함께 저장하고, 조회 시 같은 모델 벡터만 로드한다. `EMBEDDING_BACKEND` 를 바꾸면 `python -m backend.db.seed.run_all --no-drop` 로 재적재할 것.
 
+**절감액/혜택 수치 계산 (결론 슬라이드용)**: `policies` 테이블에 `benefit_amount_krw`(정액 지원금) · `benefit_period_month`(지원 개월수) · `benefit_rate_pct`(금리) 필드가 있고, `loan_products` 는 원래부터 `min_rate`/`max_rate`를 갖고 있다. `POST /users/{id}/loan-match` 응답의 금리를 유저의 기존 대출(`user_loans.interest_rate`, `balance`)과 비교하면 "이 상품으로 갈아타면 연 얼마 절감" 같은 구체적 숫자를 계산할 수 있다. `source` 컬럼(`manual`/`youthcenter_api`)으로 수작업 큐레이션 데이터와 실 API 데이터를 구분한다.
+
 ## 기대 효과 및 학술적 의의
 
 - **진단에서 실행 판단으로의 전환**: 기존 신용관리 리포트·DSR계산기가 "지금 부채 수준이 적정한가"를 진단하는 정적 스냅샷이라면, CORTIS는 매일 갱신되는 거래내역을 근거로 "이번 달 무엇을 언제 얼마나 갚을지" 실행 단위까지 판단합니다.
@@ -172,7 +184,7 @@ POST /users/{id}/policy-match    A파트 정책 재탐색
 | 이름 | 역할 | 담당 영역 |
 | --- | --- | --- |
 | 황재령 | 데이터/백엔드 | MySQL 스키마 설계, 합성 코호트 시퀀스 생성, FastAPI 서버, A 파트(정책 매칭) 로직 |
-| 박나림 | AI/ML 파이프라인 | 임베딩 파이프라인, numpy 유사도 검색 로직, LLM 추론 프롬프트 설계, Agentic 순환 로직, 콜드스타트 처리, 데모 시나리오 데이터 준비 |
+| 개발자2 | AI/ML 파이프라인 | 임베딩 파이프라인, numpy 유사도 검색 로직, LLM 추론 프롬프트 설계, Agentic 순환 로직, 콜드스타트 처리, 데모 시나리오 데이터 준비 |
 | 이채은 | 기획/자료 | 문제 정의, 시장 조사, 기술설명서(PPT) |
 
 ---

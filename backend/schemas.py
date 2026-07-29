@@ -130,6 +130,10 @@ class PolicyOut(ORMModel):
     apply_url: Optional[str] = None
     trigger_events: List[str]
     priority: int
+    benefit_amount_krw: Optional[int] = Field(None, description="1회성/총 정액 지원금(원)")
+    benefit_period_month: Optional[int] = Field(None, description="정액 지원 지속 개월수")
+    benefit_rate_pct: Optional[float] = Field(None, description="금리 인하/적용 금리(%p)")
+    source: str = Field(description="manual | youthcenter_api")
 
 
 class PolicyMatchOut(BaseModel):
@@ -152,6 +156,47 @@ class EventPolicyGroupOut(BaseModel):
     basis_event: str
     matched_count: int
     policies: List[PolicyMatchOut]
+
+
+# --------------------------------------------------------------------- 대출상품 (A파트, LoanProduct)
+class LoanProductOut(ORMModel):
+    product_id: str
+    product_name: str
+    product_type: str
+    min_rate: float
+    max_rate: float
+    max_amount: int
+    target_desc: Optional[str] = None
+    trigger_events: List[str]
+
+
+class LoanProductMatchOut(BaseModel):
+    product_id: str
+    product_name: str
+    product_type: str
+    min_rate: float
+    max_rate: float
+    max_amount: int
+    target_desc: Optional[str] = None
+    status: str
+    reason: str
+    assumption: Optional[str] = None
+    passed: List[str] = []
+    failed: List[str] = []
+
+
+class EventLoanGroupOut(BaseModel):
+    basis_event: str
+    matched_count: int
+    loan_products: List[LoanProductMatchOut]
+
+
+class LoanMatchIn(BaseModel):
+    """C엔진 예측 결과를 받아 KB 대출상품 자격을 재판단하는 요청 (PolicyMatchIn과 동일 규약)."""
+
+    event_types: List[str] = Field(description="예측/확정된 이벤트 목록", min_length=1)
+    include_ineligible: bool = False
+    prospective: bool = True
 
 
 class PolicyMatchIn(BaseModel):
