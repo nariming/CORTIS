@@ -14,7 +14,7 @@ from sqlalchemy import text
 
 from backend import config
 from backend.db.database import engine
-from backend.routers import cohorts, events, policies, predictions, users
+from backend.routers import cohorts, events, loans, policies, predictions, users
 
 app = FastAPI(
     title="CORTIS API",
@@ -40,6 +40,7 @@ app.include_router(users.router)
 app.include_router(events.router)
 app.include_router(cohorts.router)
 app.include_router(policies.router)
+app.include_router(loans.router)
 app.include_router(predictions.router)
 
 

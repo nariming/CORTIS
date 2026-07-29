@@ -22,6 +22,14 @@ LOAN_PRODUCTS = [
         max_rate=4.50,
         max_amount=200_000_000,
         target_desc="만 19~34세 무주택 청년 세대주",
+        min_age=19,
+        max_age=34,
+        max_annual_income=70_000_000,
+        allowed_employment=None,
+        allowed_housing=["전세", "월세", "부모동거"],
+        allowed_marital=None,
+        region_code=None,
+        trigger_events=["취업", "이직", "독립(전세)", "결혼"],
     ),
     dict(
         product_id="KB-MONTHLY-01",
@@ -31,6 +39,16 @@ LOAN_PRODUCTS = [
         max_rate=3.80,
         max_amount=50_000_000,
         target_desc="월세 거주 청년, 보증금+월세 동시 지원",
+        min_age=19,
+        max_age=34,
+        max_annual_income=50_000_000,
+        allowed_employment=None,
+        # 실제 임대차계약이 있어야 대출 실행이 되는 상품이라 '부모동거'는 제외
+        # (같은 이름의 정책 POL-MONTHLY-BOJEUNG은 사전 신청 성격이라 부모동거도 허용 — 의도적 차이)
+        allowed_housing=["월세"],
+        allowed_marital=None,
+        region_code=None,
+        trigger_events=["취업", "독립(월세)"],
     ),
     dict(
         product_id="KB-CREDIT-01",
@@ -40,6 +58,14 @@ LOAN_PRODUCTS = [
         max_rate=9.80,
         max_amount=100_000_000,
         target_desc="재직 6개월 이상 급여소득자",
+        min_age=None,
+        max_age=None,
+        max_annual_income=None,
+        allowed_employment=["정규직", "계약직"],
+        allowed_housing=None,
+        allowed_marital=None,
+        region_code=None,
+        trigger_events=["취업", "이직"],
     ),
     dict(
         product_id="KB-CREDIT-02",
@@ -49,6 +75,14 @@ LOAN_PRODUCTS = [
         max_rate=12.00,
         max_amount=30_000_000,
         target_desc="프리랜서·플랫폼노동 종사자 (변동소득 인정)",
+        min_age=None,
+        max_age=None,
+        max_annual_income=None,
+        allowed_employment=["프리랜서", "플랫폼노동", "자영업"],
+        allowed_housing=None,
+        allowed_marital=None,
+        region_code=None,
+        trigger_events=["취업", "창업", "퇴직"],
     ),
     dict(
         product_id="KB-STUDENT-01",
@@ -58,6 +92,14 @@ LOAN_PRODUCTS = [
         max_rate=2.90,
         max_amount=20_000_000,
         target_desc="재학생·졸업 후 2년 이내",
+        min_age=None,
+        max_age=30,
+        max_annual_income=None,
+        allowed_employment=["학생", "무직"],
+        allowed_housing=None,
+        allowed_marital=None,
+        region_code=None,
+        trigger_events=["대학생"],
     ),
     dict(
         product_id="KB-BIZ-01",
@@ -67,6 +109,14 @@ LOAN_PRODUCTS = [
         max_rate=7.50,
         max_amount=50_000_000,
         target_desc="사업자등록 1년 이내 청년 창업자",
+        min_age=19,
+        max_age=39,
+        max_annual_income=None,
+        allowed_employment=["자영업", "무직"],
+        allowed_housing=None,
+        allowed_marital=None,
+        region_code=None,
+        trigger_events=["창업"],
     ),
 ]
 
@@ -88,6 +138,7 @@ POLICIES = [
         region_code=None,
         trigger_events=["취업", "이직", "독립(전세)", "결혼"],
         priority=1,
+        benefit_rate_pct=2.00,
     ),
     dict(
         policy_id="POL-MONTHLY-BOJEUNG",
@@ -105,6 +156,7 @@ POLICIES = [
         region_code=None,
         trigger_events=["취업", "독립(월세)"],
         priority=1,
+        benefit_rate_pct=1.00,
     ),
     dict(
         policy_id="POL-MONTHLY-GOVT",
@@ -122,6 +174,8 @@ POLICIES = [
         region_code=None,
         trigger_events=["독립(월세)", "취업", "퇴직"],
         priority=2,
+        benefit_amount_krw=2_400_000,
+        benefit_period_month=12,
     ),
     dict(
         policy_id="POL-SEOUL-MONTHLY",
@@ -139,6 +193,8 @@ POLICIES = [
         region_code="11",
         trigger_events=["독립(월세)"],
         priority=2,
+        benefit_amount_krw=2_000_000,
+        benefit_period_month=10,
     ),
     dict(
         policy_id="POL-SME-JEONSE",
@@ -156,6 +212,7 @@ POLICIES = [
         region_code=None,
         trigger_events=["취업", "이직", "독립(전세)", "독립(월세)"],
         priority=1,
+        benefit_rate_pct=1.50,
     ),
     dict(
         policy_id="POL-JEONSE-BOJEUNG-FEE",
@@ -173,6 +230,7 @@ POLICIES = [
         region_code=None,
         trigger_events=["독립(전세)"],
         priority=3,
+        benefit_amount_krw=300_000,
     ),
     dict(
         policy_id="POL-NAEIL-CHAEUM",
@@ -190,6 +248,8 @@ POLICIES = [
         region_code=None,
         trigger_events=["취업", "이직"],
         priority=1,
+        benefit_amount_krw=12_000_000,
+        benefit_period_month=24,
     ),
     dict(
         policy_id="POL-DOYAK-ACCOUNT",
@@ -207,6 +267,8 @@ POLICIES = [
         region_code=None,
         trigger_events=["취업", "이직", "창업"],
         priority=2,
+        benefit_amount_krw=50_000_000,
+        benefit_period_month=60,
     ),
     dict(
         policy_id="POL-SUNSHINE-YOUTH",
@@ -224,6 +286,7 @@ POLICIES = [
         region_code=None,
         trigger_events=["퇴직", "졸업", "취업", "창업"],
         priority=2,
+        benefit_rate_pct=3.60,
     ),
     dict(
         policy_id="POL-CHUIEOP-JIWON",
@@ -241,6 +304,8 @@ POLICIES = [
         region_code=None,
         trigger_events=["퇴직", "졸업"],
         priority=1,
+        benefit_amount_krw=3_000_000,
+        benefit_period_month=6,
     ),
     dict(
         policy_id="POL-SEOUL-SUDANG",
@@ -258,6 +323,8 @@ POLICIES = [
         region_code="11",
         trigger_events=["퇴직", "졸업"],
         priority=2,
+        benefit_amount_krw=3_000_000,
+        benefit_period_month=6,
     ),
     dict(
         policy_id="POL-STARTUP-SCHOOL",
@@ -309,6 +376,7 @@ POLICIES = [
         region_code=None,
         trigger_events=["결혼", "독립(전세)"],
         priority=1,
+        benefit_rate_pct=1.50,
     ),
     dict(
         policy_id="POL-NEWBORN-DIDIMDOL",
@@ -326,6 +394,7 @@ POLICIES = [
         region_code=None,
         trigger_events=["출산", "내집마련"],
         priority=1,
+        benefit_rate_pct=1.60,
     ),
 ]
 

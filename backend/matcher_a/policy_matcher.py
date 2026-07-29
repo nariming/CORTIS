@@ -12,11 +12,11 @@ RAG를 안 쓰는 이유
 """
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from sqlalchemy.orm import Session
 
-from backend.db.models import Policy, User
+from backend.db.models import LoanProduct, Policy, User
 
 # 이벤트가 실제로 일어나면 프로필의 어떤 값이 바뀌는가.
 #
@@ -85,46 +85,55 @@ class PolicyMatch:
         }
 
 
-def _check(user: User, policy: Policy) -> PolicyMatch:
-    """정형 자격요건을 하나씩 비교. NULL 컬럼은 '조건 없음'으로 통과 처리."""
+def _check_eligibility(user: User, item: Union[Policy, LoanProduct]) -> tuple:
+    """정형 자격요건(min_age~region_code)을 하나씩 비교해 (passed, failed) 를 돌려준다.
+
+    Policy와 LoanProduct는 이 여섯 컬럼 이름이 완전히 동일하므로(schema.sql 참고)
+    이 함수 하나로 둘 다 판정한다. NULL 컬럼은 '조건 없음'으로 통과 처리.
+    """
     passed: List[str] = []
     failed: List[str] = []
     age = user.age
 
-    if policy.min_age is not None or policy.max_age is not None:
-        lo = policy.min_age if policy.min_age is not None else 0
-        hi = policy.max_age if policy.max_age is not None else 200
+    if item.min_age is not None or item.max_age is not None:
+        lo = item.min_age if item.min_age is not None else 0
+        hi = item.max_age if item.max_age is not None else 200
         (passed if lo <= age <= hi else failed).append(f"연령 {age}세 (요건 {lo}~{hi}세)")
 
-    if policy.max_annual_income is not None:
+    if item.max_annual_income is not None:
         income = user.annual_income
-        ok = income <= policy.max_annual_income
+        ok = income <= item.max_annual_income
         (passed if ok else failed).append(
-            f"연소득 {income:,}원 (상한 {policy.max_annual_income:,}원)"
+            f"연소득 {income:,}원 (상한 {item.max_annual_income:,}원)"
         )
 
-    if policy.allowed_employment:
-        ok = user.employment_type in policy.allowed_employment
+    if item.allowed_employment:
+        ok = user.employment_type in item.allowed_employment
         (passed if ok else failed).append(
-            f"고용형태 {user.employment_type} (허용 {'/'.join(policy.allowed_employment)})"
+            f"고용형태 {user.employment_type} (허용 {'/'.join(item.allowed_employment)})"
         )
 
-    if policy.allowed_housing:
-        ok = user.housing_type in policy.allowed_housing
+    if item.allowed_housing:
+        ok = user.housing_type in item.allowed_housing
         (passed if ok else failed).append(
-            f"거주형태 {user.housing_type} (허용 {'/'.join(policy.allowed_housing)})"
+            f"거주형태 {user.housing_type} (허용 {'/'.join(item.allowed_housing)})"
         )
 
-    if policy.allowed_marital:
-        ok = user.marital_status in policy.allowed_marital
+    if item.allowed_marital:
+        ok = user.marital_status in item.allowed_marital
         (passed if ok else failed).append(
-            f"혼인상태 {user.marital_status} (허용 {'/'.join(policy.allowed_marital)})"
+            f"혼인상태 {user.marital_status} (허용 {'/'.join(item.allowed_marital)})"
         )
 
-    if policy.region_code:
-        ok = user.region_code == policy.region_code
-        (passed if ok else failed).append(f"거주지역 코드 {user.region_code} (요건 {policy.region_code})")
+    if item.region_code:
+        ok = user.region_code == item.region_code
+        (passed if ok else failed).append(f"거주지역 코드 {user.region_code} (요건 {item.region_code})")
 
+    return passed, failed
+
+
+def _check(user: User, policy: Policy) -> PolicyMatch:
+    passed, failed = _check_eligibility(user, policy)
     return PolicyMatch(
         policy=policy,
         status="not_eligible" if failed else "eligible",
@@ -203,4 +212,127 @@ def current_eligibility(db: Session, user: User, category: Optional[str] = None)
     results = [_check(user, p) for p in query.all()]
     results = [r for r in results if r.status == "eligible"]
     results.sort(key=lambda r: (r.policy.priority, r.policy.policy_name))
+    return results
+
+
+# =========================================================================
+# LoanProduct 매칭 — KB 자체 대출상품 버전.
+#
+# Policy와 판정 로직(_check_eligibility)은 공유하되, 결과 형태는 다르다.
+# Policy에는 없는 min_rate/max_rate/max_amount를 그대로 넘겨줘야
+# 나림이가 유저의 기존 대출(user_loans.interest_rate)과 비교해서
+# "이 상품으로 갈아타면 절감되는 금액"을 계산할 수 있다.
+# priority 컬럼이 LoanProduct엔 없어서 정렬은 이름순으로 한다.
+# =========================================================================
+
+
+@dataclass
+class LoanProductMatch:
+    product: LoanProduct
+    status: str                       # newly_eligible | eligible | not_eligible
+    passed: List[str]
+    failed: List[str]
+    assumption: Optional[str] = None
+
+    @property
+    def reason(self) -> str:
+        core = (
+            "미충족: " + ", ".join(self.failed)
+            if self.failed
+            else ("충족: " + ", ".join(self.passed) if self.passed else "별도 자격요건 없음")
+        )
+        return f"[{self.assumption}] {core}" if self.assumption else core
+
+    def to_dict(self) -> dict:
+        return {
+            "product_id": self.product.product_id,
+            "product_name": self.product.product_name,
+            "product_type": self.product.product_type,
+            "min_rate": float(self.product.min_rate),
+            "max_rate": float(self.product.max_rate),
+            "max_amount": self.product.max_amount,
+            "target_desc": self.product.target_desc,
+            "status": self.status,
+            "reason": self.reason,
+            "assumption": self.assumption,
+            "passed": self.passed,
+            "failed": self.failed,
+        }
+
+
+def _check_loan(user: User, product: LoanProduct) -> LoanProductMatch:
+    passed, failed = _check_eligibility(user, product)
+    return LoanProductMatch(
+        product=product,
+        status="not_eligible" if failed else "eligible",
+        passed=passed,
+        failed=failed,
+    )
+
+
+def match_for_loan_event(
+    db: Session,
+    user: User,
+    event_type: str,
+    include_ineligible: bool = False,
+    prospective: bool = True,
+) -> List[LoanProductMatch]:
+    """match_for_event()의 LoanProduct 버전. 이벤트 트리거 → 자격 있는 KB 대출상품.
+
+    prospective=True면 Policy와 동일하게 EVENT_IMPLIED_PROFILE로 이벤트 발생 후
+    프로필을 가정한다 (예: 독립(월세) 예측 시 월세 대출상품이 자격 판정에 걸리도록).
+    """
+    candidates = [
+        p for p in db.query(LoanProduct).all() if event_type in (p.trigger_events or [])
+    ]
+
+    overrides = EVENT_IMPLIED_PROFILE.get(event_type, {}) if prospective else {}
+    subject = ProjectedUser(user, overrides) if overrides else user
+
+    results = [_check_loan(subject, p) for p in candidates]
+    for r in results:
+        if r.status == "eligible":
+            r.status = "newly_eligible"
+        if overrides:
+            assumed = ", ".join(f"{k}={v}" for k, v in overrides.items())
+            r.assumption = f"'{event_type}' 발생 가정 ({assumed})"
+
+    if not include_ineligible:
+        results = [r for r in results if r.status != "not_eligible"]
+
+    results.sort(key=lambda r: (r.product.min_rate, r.product.product_name))
+    return results
+
+
+def match_for_loan_events(
+    db: Session,
+    user: User,
+    event_types: List[str],
+    include_ineligible: bool = False,
+    prospective: bool = True,
+) -> List[dict]:
+    """match_for_events()의 LoanProduct 버전. C엔진 예측 결과를 그대로 받는 진입점."""
+    out = []
+    for event_type in event_types:
+        matches = match_for_loan_event(db, user, event_type, include_ineligible, prospective)
+        out.append(
+            {
+                "basis_event": event_type,
+                "matched_count": len(matches),
+                "loan_products": [m.to_dict() for m in matches],
+            }
+        )
+    return out
+
+
+def current_loan_eligibility(
+    db: Session, user: User, product_type: Optional[str] = None
+) -> List[LoanProductMatch]:
+    """이벤트와 무관하게 '지금 자격이 되는 KB 대출상품' 전수 조회."""
+    query = db.query(LoanProduct)
+    if product_type:
+        query = query.filter(LoanProduct.product_type == product_type)
+    results = [_check_loan(user, p) for p in query.all()]
+    results = [r for r in results if r.status == "eligible"]
+    results.sort(key=lambda r: (r.product.min_rate, r.product.product_name))
     return results
