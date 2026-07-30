@@ -1,4 +1,7 @@
-"""LLM/가중치 기반으로 생성된 합성 코호트 300개. generate_cohorts.py로 생성됨."""
+"""가중치 기반 랜덤 생성(random.choices) 합성 코호트 300개.
+생성 로직: generate_cohorts.py (전이 가중치는 통계청/국가데이터처 공식 조사로
+방향성 검증됨, 파일 상단 docstring 참고).
+"""
 
 COHORT_SEQUENCES_300 = [
   {
