@@ -113,6 +113,49 @@ def main() -> int:
     elig_b = {m.policy.policy_id for m in policy_matcher.current_eligibility(db, db.get(models.User, "U_B"))}
     check("A/B 자격 정책 집합이 다름", elig_a != elig_b, f"A={len(elig_a)}건 B={len(elig_b)}건")
 
+    print("\n=== 7. Policy 정량 필드 (절감액/혜택 계산용) ===")
+    naeil = db.query(models.Policy).filter(models.Policy.policy_id == "POL-NAEIL-CHAEUM").one()
+    check(
+        "청년내일채움공제 정액 지원금 채워짐",
+        naeil.benefit_amount_krw == 12_000_000 and naeil.benefit_period_month == 24,
+        f"{naeil.benefit_amount_krw}원 / {naeil.benefit_period_month}개월",
+    )
+    jeonse_btm = db.query(models.Policy).filter(models.Policy.policy_id == "POL-JEONSE-BTM").one()
+    check(
+        "버팀목전세대출 금리 필드 채워짐",
+        float(jeonse_btm.benefit_rate_pct) == 2.00,
+        str(jeonse_btm.benefit_rate_pct),
+    )
+    check("기존 수작업 정책 source='manual'", naeil.source == "manual", naeil.source)
+
+    print("\n=== 8. LoanProduct 매칭 — 같은 이벤트, 다른 유저 (Policy와 동일 패턴) ===")
+    loan_groups_a = policy_matcher.match_for_loan_events(db, db.get(models.User, "U_A"), ["독립(월세)"])
+    loan_groups_b = policy_matcher.match_for_loan_events(db, db.get(models.User, "U_B"), ["창업"])
+    loan_names_a = [p["product_name"] for p in loan_groups_a[0]["loan_products"]]
+    check("A: 독립(월세) 예측 → KB 월세대출 상품 매칭", "KB 청년 보증부월세대출" in loan_names_a, str(loan_names_a))
+    check(
+        "LoanProduct 매칭 결과에 금리 필드 포함(절감액 계산용)",
+        all("min_rate" in p and "max_rate" in p for p in loan_groups_a[0]["loan_products"]),
+    )
+
+    loan_names_b = [p["product_name"] for p in loan_groups_b[0]["loan_products"]]
+    check("B: 창업 예측 → KB 창업 사업자대출 매칭", "KB 청년 창업 사업자대출" in loan_names_b, str(loan_names_b))
+
+    strict_loan_a = policy_matcher.match_for_loan_events(
+        db, db.get(models.User, "U_A"), ["독립(월세)"], prospective=False
+    )
+    check(
+        "LoanProduct도 prospective=False면 결과가 더 좁음",
+        len(strict_loan_a[0]["loan_products"]) < len(loan_groups_a[0]["loan_products"]),
+        f"{len(strict_loan_a[0]['loan_products'])}건 < {len(loan_groups_a[0]['loan_products'])}건",
+    )
+
+    cur_loans_a = policy_matcher.current_loan_eligibility(db, db.get(models.User, "U_A"))
+    cur_loans_b = policy_matcher.current_loan_eligibility(db, db.get(models.User, "U_B"))
+    cur_ids_a = {m.product.product_id for m in cur_loans_a}
+    cur_ids_b = {m.product.product_id for m in cur_loans_b}
+    check("A/B 현재 자격 대출상품 집합이 다름", cur_ids_a != cur_ids_b, f"A={cur_ids_a} B={cur_ids_b}")
+
     failed = [c for c in CHECKS if not c[1]]
     print(f"\n{'=' * 50}")
     print(f"결과: {len(CHECKS) - len(failed)}/{len(CHECKS)} 통과")

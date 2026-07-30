@@ -65,6 +65,12 @@ class User(Base):
 
 
 class LoanProduct(Base):
+    """policies와 동일한 자격요건 컬럼 규약 + trigger_events.
+
+    match_for_loan_event() 가 이 규약(속성명 동일)에 의존해 Policy와 같은
+    _eligibility_check() 로직을 공유한다. 필드를 바꿀 땐 Policy와 짝을 맞출 것.
+    """
+
     __tablename__ = "loan_products"
 
     product_id = Column(String(32), primary_key=True)
@@ -76,6 +82,16 @@ class LoanProduct(Base):
     max_rate = Column(Numeric(4, 2), nullable=False)
     max_amount = Column(BigInteger, nullable=False)
     target_desc = Column(String(255), nullable=True)
+
+    min_age = Column(SmallInteger, nullable=True)
+    max_age = Column(SmallInteger, nullable=True)
+    max_annual_income = Column(BigInteger, nullable=True)
+    allowed_employment = Column(JSON, nullable=True)
+    allowed_housing = Column(JSON, nullable=True)
+    allowed_marital = Column(JSON, nullable=True)
+    region_code = Column(String(10), nullable=True)
+
+    trigger_events = Column(JSON, nullable=False)
 
 
 class UserLoan(Base):
@@ -119,6 +135,12 @@ class Policy(Base):
 
     trigger_events = Column(JSON, nullable=False)
     priority = Column(SmallInteger, nullable=False, default=5)
+
+    benefit_amount_krw = Column(BigInteger, nullable=True)
+    benefit_period_month = Column(SmallInteger, nullable=True)
+    benefit_rate_pct = Column(Numeric(4, 2), nullable=True)
+    source = Column(Enum("manual", "youthcenter_api"), nullable=False, default="manual")
+    external_policy_no = Column(String(30), nullable=True)
 
 
 class Transaction(Base):

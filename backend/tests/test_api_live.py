@@ -14,10 +14,11 @@ import sys
 from backend.db.database import session_scope
 from backend.repositories import cohort_repo
 from backend.routers import events as events_router
+from backend.routers import loans as loans_router
 from backend.routers import policies as policies_router
 from backend.routers import predictions as predictions_router
 from backend.routers import users as users_router
-from backend.schemas import PolicyMatchIn, PredictionIn
+from backend.schemas import LoanMatchIn, PolicyMatchIn, PredictionIn
 
 CHECKS = []
 
@@ -56,6 +57,17 @@ def main() -> int:
         )
         names_b = [p["policy_name"] for p in groups_b[0]["policies"]]
         check("B: 결혼 예측 → 신혼부부 정책", any("신혼" in n for n in names_b), str(names_b))
+
+        print("\n=== A파트: KB 대출상품 매칭 (LoanProduct, 절감액 계산용 금리 포함) ===")
+        loan_groups_a = loans_router.match_loan_products(
+            "U_A", LoanMatchIn(event_types=["독립(월세)"]), db
+        )
+        loan_names_a = [p["product_name"] for p in loan_groups_a[0]["loan_products"]]
+        check("A: 독립(월세) 예측 → KB 월세대출 매칭", "KB 청년 보증부월세대출" in loan_names_a, str(loan_names_a))
+        check(
+            "매칭 결과에 min_rate/max_rate 포함",
+            all("min_rate" in p and "max_rate" in p for p in loan_groups_a[0]["loan_products"]),
+        )
 
         print("\n=== 예측 결과 저장 (근거 코호트 포함, 실제 커밋) ===")
         saved = predictions_router.save_prediction(

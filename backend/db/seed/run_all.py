@@ -7,9 +7,12 @@
 하는 일
   1. cortis 데이터베이스 생성 (없으면)
   2. schema.sql 실행 → 테이블 생성 (기본은 DROP 후 재생성)
-  3. 대출상품 / 정책 DB 적재
-  4. 데모 유저 A/B + 거래내역 + 확정 이벤트 적재
-  5. 합성 코호트 300개 임베딩 후 적재
+  3. 대출상품 / 정책 DB 적재 (수작업 큐레이션, source='manual')
+  4. 온통청년 오픈API 실 데이터 적재 (source='youthcenter_api') — YOUTHCENTER_API_KEY 없거나
+     API 호출이 실패하면 경고만 찍고 건너뛴다. manual 데이터는 항상 남아 있으므로
+     이 단계가 실패해도 이후 단계와 데모 자체는 영향받지 않는다.
+  5. 데모 유저 A/B + 거래내역 + 확정 이벤트 적재
+  6. 합성 코호트 300개 임베딩 후 적재
 """
 
 import argparse
@@ -24,6 +27,8 @@ from backend.db.database import session_scope, engine
 from backend.db.seed.seed_catalog import seed_catalog
 from backend.db.seed.seed_cohorts import seed_cohorts
 from backend.db.seed.seed_demo_users import seed_demo_users
+from backend.db.seed.seed_youthcenter import seed_from_youthcenter
+from backend.integrations.youthcenter_client import YouthCenterAPIError
 
 SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schema.sql"
 
@@ -84,17 +89,26 @@ def main() -> int:
 
     with session_scope() as db:
         result = seed_catalog(db)
-        print(f"[3/5] 카탈로그 적재 — 대출상품 {result['loan_products']}건, 정책 {result['policies']}건")
+        print(f"[3/6] 카탈로그 적재 — 대출상품 {result['loan_products']}건, 정책 {result['policies']}건")
+
+        try:
+            yc = seed_from_youthcenter(db)
+            print(
+                f"[4/6] 온통청년 API 적재 — 수신 {yc['fetched']}건 / 적재 {yc['inserted']}건 "
+                f"(필드매핑 실패 {yc['skipped_no_mapping']}, 트리거없음 {yc['skipped_no_trigger']})"
+            )
+        except YouthCenterAPIError as e:
+            print(f"[4/6] 온통청년 API 적재 건너뜀 — {e}")
 
         result = seed_demo_users(db)
         print(
-            f"[4/5] 데모 유저 적재 — 유저 {result['users']}명, 대출 {result['loans']}건, "
+            f"[5/6] 데모 유저 적재 — 유저 {result['users']}명, 대출 {result['loans']}건, "
             f"확정 이벤트 {result['confirmed_events']}건"
         )
 
         result = seed_cohorts(db)
         print(
-            f"[5/5] 코호트 적재 — {result['cohorts']}건 "
+            f"[6/6] 코호트 적재 — {result['cohorts']}건 "
             f"(임베딩 {result['embedding_model']}, {result['dim']}차원)"
         )
 

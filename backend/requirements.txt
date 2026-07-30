@@ -6,3 +6,4 @@ PyMySQL>=1.1
 cryptography>=42.0        # MySQL 8 caching_sha2_password 인증에 필요
 python-dotenv>=1.0
 numpy>=1.26                # 코호트 임베딩 벡터 처리 (C파트와 공용)
+requests>=2.31              # 온통청년 오픈API 호출
