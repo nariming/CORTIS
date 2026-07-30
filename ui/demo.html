@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CORTIS — 생애주기 장부</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #E9ECE3;
+    --paper: #FBFBF7;
+    --ink: #1E2A24;
+    --ink-soft: #4B594F;
+    --line: #D3D6C7;
+    --gold: #B8863B;
+    --gold-soft: #EDE0C6;
+    --green: #3F6B4A;
+    --green-soft: #E1E9DF;
+    --clay: #A6452F;
+    --clay-soft: #F1E1DA;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'IBM Plex Sans KR', sans-serif;
+    padding: 40px 20px 80px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+
+  header { margin-bottom: 36px; }
+  .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+  }
+  h1 {
+    font-family: 'Fraunces', serif;
+    font-optical-sizing: auto;
+    font-weight: 600;
+    font-size: 40px;
+    margin: 6px 0 4px;
+    letter-spacing: -0.01em;
+  }
+  .sub { color: var(--ink-soft); font-size: 15px; max-width: 560px; line-height: 1.5; }
+
+  .panel {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .panel-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .panel-title::before { content: ''; width: 6px; height: 6px; background: var(--gold); border-radius: 50%; display: inline-block; }
+
+  /* 유저 선택 */
+  .user-picker { display: flex; gap: 12px; flex-wrap: wrap; }
+  .user-card {
+    flex: 1; min-width: 220px;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    border-radius: 4px;
+    padding: 16px 18px;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color .15s, transform .1s;
+    font-family: 'IBM Plex Sans KR', sans-serif;
+  }
+  .user-card:hover { border-color: var(--gold); }
+  .user-card.active { border-color: var(--gold); background: var(--gold-soft); }
+  .user-card .name { font-family: 'Fraunces', serif; font-size: 20px; font-weight: 600; }
+  .user-card .meta { font-size: 12.5px; color: var(--ink-soft); margin-top: 4px; line-height: 1.5; }
+
+  /* 생애 시퀀스 장부 (시그니처 요소) */
+  .ledger {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 0;
+    min-height: 56px;
+  }
+  .stamp {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 15px;
+    padding: 8px 14px;
+    border: 1.5px solid var(--ink);
+    border-radius: 3px;
+    background: var(--paper);
+    transform: rotate(-1.2deg);
+    white-space: nowrap;
+  }
+  .stamp:nth-child(4n) { transform: rotate(1deg); }
+  .stamp:nth-child(4n+2) { transform: rotate(-0.6deg); }
+  .stamp.latest { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 0 3px var(--gold-soft); }
+  .stamp.pending {
+    border-style: dashed; color: var(--ink-soft); border-color: var(--line);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:.5} 50%{opacity:1} }
+  .dots {
+    flex: 0 0 24px; height: 1px; border-top: 2px dotted var(--line);
+    margin: 0 2px; align-self: center;
+  }
+
+  /* 확인 질문 카드 */
+  .question-card {
+    border: 1.5px solid var(--gold);
+    background: var(--gold-soft);
+    border-radius: 4px;
+    padding: 20px;
+  }
+  .question-text { font-size: 15.5px; line-height: 1.6; margin-bottom: 14px; }
+  .question-text b { font-family: 'Fraunces', serif; }
+  .btn-row { display: flex; gap: 10px; }
+  button {
+    font-family: 'IBM Plex Sans KR', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    padding: 10px 18px;
+    border-radius: 3px;
+    border: 1.5px solid var(--ink);
+    background: var(--ink);
+    color: var(--paper);
+    cursor: pointer;
+  }
+  button.secondary { background: transparent; color: var(--ink); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button:hover:not(:disabled) { opacity: .85; }
+
+  .empty-note {
+    color: var(--ink-soft); font-size: 14px; font-style: italic;
+  }
+
+  /* 추론 결과 */
+  .confidence-badge {
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 3px 9px;
+    border-radius: 20px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+  .confidence-high { background: var(--green-soft); color: var(--green); }
+  .confidence-medium { background: var(--gold-soft); color: var(--gold); }
+  .confidence-low { background: var(--clay-soft); color: var(--clay); }
+
+  .confidence-note { font-size: 13.5px; color: var(--ink-soft); margin: 10px 0 18px; line-height: 1.5; }
+
+  .prediction-list { display: flex; flex-direction: column; gap: 10px; }
+  .prediction-item {
+    border: 1px solid var(--line); border-radius: 4px; padding: 12px 14px;
+    display: flex; gap: 12px; align-items: baseline;
+  }
+  .prediction-item .ev { font-family: 'Fraunces', serif; font-weight: 600; font-size: 16px; min-width: 90px; }
+  .prediction-item .evidence { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--gold); white-space: nowrap; }
+  .prediction-item .reason { font-size: 13px; color: var(--ink-soft); line-height: 1.5; }
+
+  /* 정책 카드 */
+  .policy-group { margin-bottom: 18px; }
+  .policy-group-title {
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--ink-soft);
+    margin-bottom: 8px; text-transform: uppercase; letter-spacing: .05em;
+  }
+  .policy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 640px) { .policy-grid { grid-template-columns: 1fr; } }
+  .policy-card {
+    border: 1px solid var(--line); border-radius: 4px; padding: 14px;
+    background: var(--paper);
+  }
+  .policy-card.eligible { border-left: 4px solid var(--green); }
+  .policy-card.not-eligible { border-left: 4px solid var(--clay); opacity: .8; }
+  .policy-name { font-weight: 600; font-size: 14.5px; margin-bottom: 3px; }
+  .policy-provider { font-size: 12px; color: var(--ink-soft); margin-bottom: 8px; }
+  .policy-benefit { font-size: 13px; line-height: 1.5; margin-bottom: 8px; }
+  .policy-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    padding: 2px 7px;
+    border-radius: 3px;
+  }
+  .chip.pass { background: var(--green-soft); color: var(--green); }
+  .chip.fail { background: var(--clay-soft); color: var(--clay); }
+
+  .loading {
+    display: flex; align-items: center; gap: 10px;
+    color: var(--ink-soft); font-size: 14px; padding: 14px 0;
+  }
+  .spinner {
+    width: 14px; height: 14px; border: 2px solid var(--line);
+    border-top-color: var(--gold); border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-box {
+    background: var(--clay-soft); color: var(--clay); border: 1px solid var(--clay);
+    border-radius: 4px; padding: 12px 14px; font-size: 13.5px; line-height: 1.5;
+  }
+
+  .server-hint {
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--ink-soft);
+    margin-top: 40px; text-align: center; line-height: 1.8;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">CORTIS · C-Engine Live Demo</div>
+    <h1>생애주기 장부</h1>
+    <p class="sub">거래내역에서 감지된 이벤트를 확정하면, 유사 코호트 300건을 검색해 AI가 다음 이벤트를 예측하고, 그 예측을 근거로 자격이 바뀌는 정책을 자동으로 찾습니다.</p>
+  </header>
+
+  <div class="panel">
+    <div class="panel-title">유저 선택</div>
+    <div class="user-picker" id="userPicker">
+      <div class="empty-note">불러오는 중…</div>
+    </div>
+  </div>
+
+  <div class="panel" id="ledgerPanel" style="display:none;">
+    <div class="panel-title">확정된 히스토리</div>
+    <div class="ledger" id="ledger"></div>
+  </div>
+
+  <div class="panel" id="detectPanel" style="display:none;">
+    <div class="panel-title">거래내역 기반 감지</div>
+    <div id="detectContent"><div class="empty-note">감지 중…</div></div>
+  </div>
+
+  <div class="panel" id="resultPanel" style="display:none;">
+    <div class="panel-title">AI 예측 결과</div>
+    <div id="resultContent"></div>
+  </div>
+
+  <div class="panel" id="policyPanel" style="display:none;">
+    <div class="panel-title">A파트 — 정책 자격 재판단</div>
+    <div id="policyContent"></div>
+  </div>
+
+  <div class="server-hint">
+    Backend API :8000 · C-Engine :8001<br/>
+    두 서버 모두 켜져 있어야 합니다 — uvicorn backend.main:app --reload / uvicorn pipeline.demo_server:app --port 8001 --reload
+  </div>
+</div>
+
+<script>
+const BACKEND = 'http://localhost:8000';
+const DEMO = 'http://localhost:8001';
+
+let currentUser = null;
+
+async function fetchJSON(url, opts) {
+  const res = await fetch(url, opts);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`${res.status} ${res.statusText} — ${text.slice(0, 200)}`);
+  }
+  return res.json();
+}
+
+function showError(container, err) {
+  container.innerHTML = `<div class="error-box">⚠ ${err.message || err}</div>`;
+}
+
+async function loadUsers() {
+  const picker = document.getElementById('userPicker');
+  try {
+    const users = await fetchJSON(`${DEMO}/demo/users`);
+    picker.innerHTML = '';
+    users.forEach(u => {
+      const el = document.createElement('div');
+      el.className = 'user-card';
+      el.innerHTML = `
+        <div class="name">${u.name}</div>
+        <div class="meta">${u.employment_type} · 월소득 ${Number(u.monthly_income_avg).toLocaleString()}원<br/>${u.housing_type} · ${u.marital_status}</div>
+      `;
+      el.onclick = () => selectUser(u.user_id, el);
+      picker.appendChild(el);
+    });
+  } catch (err) {
+    showError(picker, err);
+  }
+}
+
+function selectUser(userId, el) {
+  document.querySelectorAll('.user-card').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  currentUser = userId;
+  ['ledgerPanel','detectPanel','resultPanel','policyPanel'].forEach(id => {
+    document.getElementById(id).style.display = 'block';
+  });
+  document.getElementById('resultPanel').style.display = 'none';
+  document.getElementById('policyPanel').style.display = 'none';
+  loadLedger(userId);
+  loadDetect(userId);
+  loadLatestPrediction(userId);
+}
+
+async function loadLatestPrediction(userId) {
+  try {
+    const data = await fetchJSON(`${DEMO}/demo/latest-prediction/${userId}`);
+    if (!data) return;
+    document.getElementById('resultPanel').style.display = 'block';
+    const box = document.getElementById('resultContent');
+    renderPrediction(data);
+    const note = document.createElement('div');
+    note.className = 'empty-note';
+    note.style.marginTop = '10px';
+    note.textContent = `(저장된 예측 — ${new Date(data.created_at).toLocaleString('ko-KR')} 기준. 정책 매칭 카드는 '확정합니다'를 다시 눌러야 새로 그려집니다.)`;
+    box.appendChild(note);
+  } catch (err) {
+    // 예측 이력이 없는 정상적인 경우일 수 있으니 조용히 무시
+  }
+}
+
+async function loadLedger(userId) {
+  const ledger = document.getElementById('ledger');
+  ledger.innerHTML = '<div class="empty-note">불러오는 중…</div>';
+  try {
+    const info = await fetchJSON(`${DEMO}/demo/history/${userId}`);
+    renderLedger(info.confirmed_history, true);
+  } catch (err) {
+    showError(ledger, err);
+  }
+}
+
+function renderLedger(history, withPending) {
+  const ledger = document.getElementById('ledger');
+  ledger.innerHTML = '';
+  history.forEach((ev, i) => {
+    if (i > 0) {
+      const dot = document.createElement('div');
+      dot.className = 'dots';
+      ledger.appendChild(dot);
+    }
+    const s = document.createElement('div');
+    s.className = 'stamp' + (i === history.length - 1 ? ' latest' : '');
+    s.textContent = ev;
+    ledger.appendChild(s);
+  });
+  if (withPending) {
+    const dot = document.createElement('div');
+    dot.className = 'dots';
+    ledger.appendChild(dot);
+    const p = document.createElement('div');
+    p.className = 'stamp pending';
+    p.textContent = '다음?';
+    ledger.appendChild(p);
+  }
+}
+
+async function loadDetect(userId) {
+  const box = document.getElementById('detectContent');
+  box.innerHTML = '<div class="loading"><div class="spinner"></div>거래내역 스캔 중…</div>';
+  try {
+    const res = await fetchJSON(`${DEMO}/demo/detect/${userId}`);
+    if (!res.candidates || res.candidates.length === 0) {
+      box.innerHTML = '<div class="empty-note">현재 감지된 신규 이벤트 후보가 없습니다.</div>';
+      return;
+    }
+    const cand = res.candidates[0];
+    box.innerHTML = `
+      <div class="question-card">
+        <div class="question-text">${cand.reason.replace(cand.event_type, `<b>${cand.event_type}</b>`)}</div>
+        <div class="btn-row">
+          <button id="confirmBtn">확정합니다</button>
+          <button class="secondary" id="rejectBtn">아니에요</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('confirmBtn').onclick = () => onConfirm(userId, cand.event_id, cand.event_type);
+    document.getElementById('rejectBtn').onclick = () => {
+      box.innerHTML = '<div class="empty-note">기각 처리했습니다. (실제로는 POST /events/{id}/reject 호출)</div>';
+    };
+  } catch (err) {
+    showError(box, err);
+  }
+}
+
+async function onConfirm(userId, eventId, eventType) {
+  const detectBox = document.getElementById('detectContent');
+  detectBox.innerHTML = `<div class="loading"><div class="spinner"></div>'${eventType}' 확정 처리 중…</div>`;
+  try {
+    await fetchJSON(`${DEMO}/demo/confirm/${eventId}`, { method: 'POST' });
+    detectBox.innerHTML = `<div class="empty-note">✓ '${eventType}' 확정됨. 히스토리에 반영되고 AI 재예측이 트리거됩니다.</div>`;
+    const info = await fetchJSON(`${DEMO}/demo/history/${userId}`);
+    renderLedger(info.confirmed_history, false);
+    await runPrediction(userId);
+  } catch (err) {
+    showError(detectBox, err);
+  }
+}
+
+async function runPrediction(userId) {
+  const resultPanel = document.getElementById('resultPanel');
+  const policyPanel = document.getElementById('policyPanel');
+  const resultBox = document.getElementById('resultContent');
+  const policyBox = document.getElementById('policyContent');
+  resultPanel.style.display = 'block';
+  resultBox.innerHTML = '<div class="loading"><div class="spinner"></div>유사 코호트 검색 + LLM 추론 중… (몇 초 걸릴 수 있어요)</div>';
+  policyPanel.style.display = 'none';
+
+  try {
+    const data = await fetchJSON(`${DEMO}/demo/predict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, include_ineligible: true }),
+    });
+    renderPrediction(data.prediction);
+    renderPolicy(data.policy_match);
+    policyPanel.style.display = 'block';
+  } catch (err) {
+    showError(resultBox, err);
+  }
+}
+
+function renderPrediction(pred) {
+  const box = document.getElementById('resultContent');
+  const badgeClass = `confidence-${pred.confidence_level}`;
+  const items = pred.predictions.map(p => `
+    <div class="prediction-item">
+      <div class="ev">${p.event}</div>
+      <div class="evidence">근거 ${p.evidence_count}건</div>
+      <div class="reason">${p.reasoning}</div>
+    </div>
+  `).join('');
+  box.innerHTML = `
+    <span class="confidence-badge ${badgeClass}">confidence: ${pred.confidence_level}</span>
+    <div class="confidence-note">${pred.confidence_note}</div>
+    <div class="prediction-list">${items}</div>
+  `;
+}
+
+function renderPolicy(groups) {
+  const box = document.getElementById('policyContent');
+  box.innerHTML = groups.map(g => {
+    const cards = g.policies.map(p => {
+      const eligible = p.status !== 'not_eligible';
+      const chips = [
+        ...p.passed.map(x => `<span class="chip pass">✓ ${x}</span>`),
+        ...p.failed.map(x => `<span class="chip fail">✕ ${x}</span>`),
+      ].join('');
+      return `
+        <div class="policy-card ${eligible ? 'eligible' : 'not-eligible'}">
+          <div class="policy-name">${p.policy_name}</div>
+          <div class="policy-provider">${p.provider} · ${p.category}</div>
+          <div class="policy-benefit">${p.benefit_summary}</div>
+          <div class="policy-chips">${chips}</div>
+        </div>
+      `;
+    }).join('');
+    return `
+      <div class="policy-group">
+        <div class="policy-group-title">근거 이벤트: ${g.basis_event} (${g.matched_count}건 매칭)</div>
+        <div class="policy-grid">${cards}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+loadUsers();
+</script>
+</body>
+</html>
