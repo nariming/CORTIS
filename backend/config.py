@@ -34,6 +34,11 @@ COHORT_TOP_K = int(os.getenv("COHORT_TOP_K", "5"))
 # 히스토리가 이 개수 미만이면 콜드스타트로 보고 신뢰도를 낮춰 표시
 COLD_START_THRESHOLD = int(os.getenv("COLD_START_THRESHOLD", "2"))
 
+# API 접근 통제용 키. 로그인 시스템이 없는 프로토타입 단계라 개별 유저 인증(JWT/OAuth) 대신
+# "이 API를 호출할 자격이 있는 클라이언트인가"만 확인하는 최소한의 접근 통제 용도.
+# .env에 설정 안 하면(로컬 개발 편의상) 인증 스킵 - backend/security.py 참고.
+API_KEY = os.getenv("API_KEY", "")
+
 
 def database_url(with_db: bool = True) -> str:
     """SQLAlchemy 접속 URL.
