@@ -7,6 +7,7 @@ CohortIndex에 로드하는 연결 모듈.
     index = load_cohort_index_from_backend(embedder)
 """
 
+import os
 import requests
 import datetime
 from pipeline.embedding import EmbeddingProvider
@@ -16,13 +17,18 @@ from pipeline.portfolio import UserFinancialProfile, ExistingLoan, RefinanceCand
 
 BACKEND_BASE_URL = "http://localhost:8000"
 
+# 모든 요청에 API 키 헤더를 자동으로 붙이는 세션 (backend/security.py의 verify_api_key와 짝).
+# .env의 API_KEY를 그대로 사용 - 서버와 같은 값이어야 인증 통과.
+_session = requests.Session()
+_session.headers.update({"X-API-Key": os.environ.get("API_KEY", "")})
+
 
 def fetch_cohorts_from_backend(base_url: str = BACKEND_BASE_URL) -> list:
     """GET /cohorts 호출해서 원본 row 리스트를 그대로 반환.
 
     서버(uvicorn backend.main:app --reload)가 켜져 있어야 함.
     """
-    resp = requests.get(f"{base_url}/cohorts", timeout=10)
+    resp = _session.get(f"{base_url}/cohorts", timeout=10)
     resp.raise_for_status()
     return resp.json()
 
@@ -42,7 +48,7 @@ def load_cohort_index_from_backend(embedder: EmbeddingProvider, base_url: str = 
 
 def get_user_history(user_id: str, base_url: str = BACKEND_BASE_URL) -> dict:
     """GET /users/{user_id}/history 호출."""
-    resp = requests.get(f"{base_url}/users/{user_id}/history", timeout=10)
+    resp = _session.get(f"{base_url}/users/{user_id}/history", timeout=10)
     resp.raise_for_status()
     return resp.json()
 
@@ -57,7 +63,7 @@ def create_life_event(user_id: str, event_type: str, base_url: str = BACKEND_BAS
         "status": "confirmed",
         "confidence": 1.0,
     }
-    resp = requests.post(f"{base_url}/users/{user_id}/events", json=payload, timeout=10)
+    resp = _session.post(f"{base_url}/users/{user_id}/events", json=payload, timeout=10)
     resp.raise_for_status()
     return resp.json()
 
@@ -83,7 +89,7 @@ def save_prediction(
         confidence_note=confidence_note,
         matched_cohorts=matched_cohorts,
     )
-    resp = requests.post(f"{base_url}/users/{user_id}/predictions", json=asdict_safe(req), timeout=10)
+    resp = _session.post(f"{base_url}/users/{user_id}/predictions", json=asdict_safe(req), timeout=10)
     resp.raise_for_status()
     return resp.json()
 
@@ -107,14 +113,14 @@ def request_policy_match(
         include_ineligible=include_ineligible,
         persist=persist,
     )
-    resp = requests.post(f"{base_url}/users/{user_id}/policy-match", json=asdict_safe(req), timeout=10)
+    resp = _session.post(f"{base_url}/users/{user_id}/policy-match", json=asdict_safe(req), timeout=10)
     resp.raise_for_status()
     return resp.json()
 
 
 def fetch_user_detail(user_id: str, base_url: str = BACKEND_BASE_URL) -> dict:
     """GET /users/{user_id} 호출. UserDetailOut 그대로 반환 (loans[] 포함)."""
-    resp = requests.get(f"{base_url}/users/{user_id}", timeout=10)
+    resp = _session.get(f"{base_url}/users/{user_id}", timeout=10)
     resp.raise_for_status()
     return resp.json()
 
@@ -136,7 +142,7 @@ def request_loan_match(
         "include_ineligible": include_ineligible,
         "prospective": prospective,
     }
-    resp = requests.post(f"{base_url}/users/{user_id}/loan-match", json=payload, timeout=10)
+    resp = _session.post(f"{base_url}/users/{user_id}/loan-match", json=payload, timeout=10)
     resp.raise_for_status()
     return resp.json()
 
@@ -225,7 +231,7 @@ def fetch_policy_catalog(base_url: str = BACKEND_BASE_URL) -> list:
     /policy-match 응답(PolicyMatchOut)에는 이 숫자필드가 없어서, policy_id로
     이 카탈로그와 매칭해 보강하는 용도로 쓴다.
     """
-    resp = requests.get(f"{base_url}/policies", timeout=10)
+    resp = _session.get(f"{base_url}/policies", timeout=10)
     resp.raise_for_status()
     return resp.json()
 
