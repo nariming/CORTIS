@@ -17,6 +17,7 @@ class LoanOut(ORMModel):
     principal: int
     balance: int
     interest_rate: float
+    rate_type: str
     monthly_payment: int
     due_day: int
     started_at: date
@@ -30,6 +31,7 @@ class UserOut(ORMModel):
     birth_year: int
     employment_type: str
     monthly_income_avg: int
+    liquid_assets_krw: int = Field(description="여유자금/예금 잔액(원) — 조기상환 여력 판단용")
     income_volatility: float
     marital_status: str
     housing_type: str
@@ -163,6 +165,7 @@ class LoanProductOut(ORMModel):
     product_id: str
     product_name: str
     product_type: str
+    rate_type: str
     min_rate: float
     max_rate: float
     max_amount: int
@@ -174,6 +177,7 @@ class LoanProductMatchOut(BaseModel):
     product_id: str
     product_name: str
     product_type: str
+    rate_type: str
     min_rate: float
     max_rate: float
     max_amount: int

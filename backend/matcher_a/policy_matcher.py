@@ -248,6 +248,7 @@ class LoanProductMatch:
             "product_id": self.product.product_id,
             "product_name": self.product.product_name,
             "product_type": self.product.product_type,
+            "rate_type": self.product.rate_type,
             "min_rate": float(self.product.min_rate),
             "max_rate": float(self.product.max_rate),
             "max_amount": self.product.max_amount,
