@@ -157,7 +157,7 @@ CREATE TABLE transactions (
     tx_date     DATE         NOT NULL,
     amount      BIGINT       NOT NULL COMMENT '음수=출금, 양수=입금',
     counterparty VARCHAR(100) NOT NULL COMMENT '이체처/가맹점명',
-    category    VARCHAR(30)  NOT NULL COMMENT '급여/월세/보험/카드/의료/기타',
+    category    VARCHAR(30)  NOT NULL COMMENT '급여/월세/저축/보험/카드/의료/기타',
     memo        VARCHAR(255) NULL,
     PRIMARY KEY (tx_id),
     KEY idx_tx_user_date (user_id, tx_date),
