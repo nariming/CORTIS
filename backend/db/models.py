@@ -33,6 +33,7 @@ AutoBigInt = BigInteger().with_variant(Integer, "sqlite")
 EMPLOYMENT_TYPES = ("정규직", "계약직", "프리랜서", "플랫폼노동", "자영업", "무직", "학생")
 HOUSING_TYPES = ("부모동거", "월세", "전세", "자가", "기숙사")
 MARITAL_TYPES = ("미혼", "기혼")
+RATE_TYPES = ("고정", "변동", "혼합형", "주기형")
 
 
 class User(Base):
@@ -43,6 +44,7 @@ class User(Base):
     birth_year = Column(SmallInteger, nullable=False)
     employment_type = Column(Enum(*EMPLOYMENT_TYPES), nullable=False)
     monthly_income_avg = Column(Integer, nullable=False, default=0)
+    liquid_assets_krw = Column(Integer, nullable=False, default=0)
     income_volatility = Column(Numeric(5, 3), nullable=False, default=0)
     marital_status = Column(Enum(*MARITAL_TYPES), nullable=False, default="미혼")
     housing_type = Column(Enum(*HOUSING_TYPES), nullable=False, default="부모동거")
@@ -78,6 +80,7 @@ class LoanProduct(Base):
     product_type = Column(
         Enum("전월세자금", "신용대출", "학자금", "사업자", "마이너스통장"), nullable=False
     )
+    rate_type = Column(Enum(*RATE_TYPES), nullable=False, default="변동")
     min_rate = Column(Numeric(4, 2), nullable=False)
     max_rate = Column(Numeric(4, 2), nullable=False)
     max_amount = Column(BigInteger, nullable=False)
@@ -103,6 +106,7 @@ class UserLoan(Base):
     principal = Column(BigInteger, nullable=False)
     balance = Column(BigInteger, nullable=False)
     interest_rate = Column(Numeric(4, 2), nullable=False)
+    rate_type = Column(Enum(*RATE_TYPES), nullable=False, default="변동")
     monthly_payment = Column(Integer, nullable=False)
     due_day = Column(SmallInteger, nullable=False)
     started_at = Column(Date, nullable=False)

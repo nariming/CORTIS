@@ -42,6 +42,17 @@ def main() -> int:
     check("정책 DB 적재", catalog["policies"] >= 10, f"{catalog['policies']}건")
     check("데모 유저 적재", demo["users"] == 2, f"확정 이벤트 {demo['confirmed_events']}건")
 
+    user_a = db.get(models.User, "U_A")
+    loan_a = db.get(models.UserLoan, "LN_A_1")
+    check(
+        "liquid_assets_krw가 대출잔액보다 작게 세팅됨 (전액상환 아닌 시나리오)",
+        0 < user_a.liquid_assets_krw < loan_a.balance,
+        f"여유자금 {user_a.liquid_assets_krw:,}원 < 잔액 {loan_a.balance:,}원",
+    )
+    check("UserLoan.rate_type 채워짐", loan_a.rate_type == "주기형", loan_a.rate_type)
+    kb_student = db.query(models.LoanProduct).filter_by(product_id="KB-STUDENT-01").one()
+    check("LoanProduct.rate_type 채워짐", kb_student.rate_type == "주기형", kb_student.rate_type)
+
     print("\n=== 2. 확정 히스토리 (C엔진 입력) ===")
     hist_a = event_repo.confirmed_history(db, "U_A")
     hist_b = event_repo.confirmed_history(db, "U_B")

@@ -43,6 +43,7 @@ CREATE TABLE users (
     -- 변동소득 청년이 핵심 타깃이므로 고용형태를 정형값으로 관리
     employment_type    ENUM('정규직','계약직','프리랜서','플랫폼노동','자영업','무직','학생') NOT NULL,
     monthly_income_avg INT          NOT NULL DEFAULT 0 COMMENT '최근 6개월 평균 월소득(원)',
+    liquid_assets_krw  INT          NOT NULL DEFAULT 0 COMMENT '여유자금/예금 잔액(원) — 조기상환 여력 판단용(포트폴리오 결정 레이어 입력)',
     income_volatility  DECIMAL(5,3) NOT NULL DEFAULT 0 COMMENT 'MAD/중앙값 = 소득 변동성 지표(B파트 입력)',
     marital_status     ENUM('미혼','기혼') NOT NULL DEFAULT '미혼',
     housing_type       ENUM('부모동거','월세','전세','자가','기숙사') NOT NULL DEFAULT '부모동거',
@@ -65,6 +66,8 @@ CREATE TABLE loan_products (
     product_id          VARCHAR(32)  NOT NULL,
     product_name        VARCHAR(100) NOT NULL,
     product_type        ENUM('전월세자금','신용대출','학자금','사업자','마이너스통장') NOT NULL,
+    rate_type            ENUM('고정','변동','혼합형','주기형') NOT NULL DEFAULT '변동'
+                              COMMENT '스트레스 DSR 계산 입력 — 고정금리는 가산금리 미적용(포트폴리오 결정 레이어)',
     min_rate             DECIMAL(4,2) NOT NULL,
     max_rate             DECIMAL(4,2) NOT NULL,
     max_amount           BIGINT       NOT NULL,
@@ -93,6 +96,8 @@ CREATE TABLE user_loans (
     principal       BIGINT       NOT NULL COMMENT '최초 대출원금',
     balance         BIGINT       NOT NULL COMMENT '현재 잔액',
     interest_rate   DECIMAL(4,2) NOT NULL,
+    rate_type       ENUM('고정','변동','혼합형','주기형') NOT NULL DEFAULT '변동'
+                        COMMENT '스트레스 DSR 계산 입력 — 고정금리는 가산금리 미적용(포트폴리오 결정 레이어)',
     monthly_payment INT          NOT NULL,
     due_day         TINYINT      NOT NULL COMMENT '매월 상환일(1~28)',
     started_at      DATE         NOT NULL,
