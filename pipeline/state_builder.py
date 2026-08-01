@@ -61,15 +61,33 @@ class UserState:
         }
 
     def to_sentence(self) -> str:
-        """State Embedding 대상 문장. history 문장과는 독립된 임베딩 공간에 들어간다."""
-        credit_part = f"신용점수 {self.credit_score}" if self.credit_score is not None else "신용점수 미확인"
-        dsr_part = f"DSR {self.dsr_pct:.1f}%" if self.dsr_pct is not None else "보유 대출 없음"
-        return (
-            f"{self.age}세 {self.employment_type}, 월소득 {self.monthly_income:,}원, "
-            f"거주형태 {self.housing_type}, 혼인상태 {self.marital_status}, {credit_part}, "
-            f"{dsr_part}, 여유자금 {self.liquid_assets_krw:,}원. "
-            f"{self.tx_features.to_sentence()}"
-        )
+        """State Embedding 대상 문장.
+
+        거래 트렌드(tx_features)는 여기 포함하지 않는다 — History/State/Transaction을
+        3개의 독립된 임베딩 공간으로 분리하기로 한 설계에 따라, 거래 트렌드는
+        tx_features.tx_features_dict_to_sentence()가 별도로 담당한다. 과거에는 이 문장
+        끝에 tx_features.to_sentence()를 이어붙였으나, 그러면 State 벡터에 Transaction
+        신호가 섞여 두 임베딩 공간을 분리한 의미가 없어진다.
+        """
+        return state_dict_to_sentence(self.to_dict())
+
+
+def state_dict_to_sentence(d: dict) -> str:
+    """state dict(실유저 UserState.to_dict() 또는 코호트 state_json과 동일 스키마)
+    -> State Embedding 대상 문장.
+
+    실유저 쪽과 코호트 쪽(generate_cohorts.py가 합성한 state_json)이 이 함수 하나를
+    공유해야 두 벡터가 같은 문장 구조에서 나와 코사인 유사도가 의미를 갖는다.
+    """
+    credit_score = d.get("credit_score")
+    credit_part = f"신용점수 {credit_score}" if credit_score is not None else "신용점수 미확인"
+    dsr_pct = d.get("dsr_pct")
+    dsr_part = f"DSR {dsr_pct:.1f}%" if dsr_pct is not None else "보유 대출 없음"
+    return (
+        f"{d['age']}세 {d['employment_type']}, 월소득 {d['monthly_income']:,}원, "
+        f"거주형태 {d['housing_type']}, 혼인상태 {d['marital_status']}, {credit_part}, "
+        f"{dsr_part}, 여유자금 {d.get('liquid_assets_krw', 0):,}원."
+    )
 
 
 def _existing_loans_from_orm(loans: List[UserLoan], today: Optional[date] = None) -> List[ExistingLoan]:

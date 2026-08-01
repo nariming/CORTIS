@@ -28,6 +28,14 @@ from .portfolio_summary import build_summary_input, get_summarizer, validate_sum
 class AgentState:
     user_id: str
     confirmed_history: List[str]
+    # State/Transaction Embedding 검색용. 채워지지 않으면(None) CohortIndex.search()가
+    # 해당 공간을 자동으로 제외하고 History만으로 검색한다(기존 동작과 동일하게 안전 폴백).
+    # TODO: backend_client에 GET /users/{id}/transactions 호출 + pipeline.state_builder /
+    #       pipeline.tx_features 조합으로 이 값을 실제로 채우는 연결은 별도 작업으로 남겨둠
+    #       (현재는 배선만 뚫어놓은 상태 — agent_loop.py가 HTTP 클라이언트라 ORM User 객체를
+    #       직접 못 받으므로, user_detail(dict)+transactions(dict) -> state/tx dict 변환기가 필요).
+    query_state: Optional[dict] = None
+    query_tx: Optional[dict] = None
 
 
 @dataclass
@@ -85,7 +93,12 @@ class CortisAgent:
         """
         state.confirmed_history.append(new_event)
 
-        matches = self.index.search(state.confirmed_history, top_k=self.top_k)
+        matches = self.index.search(
+            state.confirmed_history,
+            query_state=state.query_state,
+            query_tx=state.query_tx,
+            top_k=self.top_k,
+        )
         counts = self.index.aggregate_next_events(matches)
         result = self.reasoner.predict(
             confirmed_history=state.confirmed_history,

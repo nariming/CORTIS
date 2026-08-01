@@ -296,6 +296,16 @@ def _sample_cash_need(next_event):
     return value, source
 
 
+def _sample_liquid_assets(monthly_income, employment_type):
+    """여유자금(원) 근사치. 소득이 있을수록, 학생/무직이 아닐수록 여유자금이 쌓였을 가능성이 높다는
+    상식을 반영 — 정확한 통계보다 State Embedding 문장 구조를 실제 UserState와 맞추는 목적이 크다."""
+    if employment_type in ("학생", "무직"):
+        mean = max(500_000, monthly_income * 2)
+    else:
+        mean = max(2_000_000, monthly_income * 3)
+    return max(0, round(random.gauss(mean, mean * 0.5) / 10_000) * 10_000)
+
+
 def attach_synthetic_state(seq: dict) -> dict:
     """history/next_event 하나에 State/거래 feature/전이간격/필요자금을 덧붙인다.
 
@@ -312,6 +322,7 @@ def attach_synthetic_state(seq: dict) -> dict:
     marital_status = _derive_marital_status(history)
     age = _simulate_age(history)
     monthly_income = _sample_income(employment_type)
+    liquid_assets_krw = _sample_liquid_assets(monthly_income, employment_type)
     loans = _sample_loan_portfolio(history, housing_type)
     credit_score = _sample_credit_score(employment_type, has_loan=bool(loans))
 
@@ -333,6 +344,7 @@ def attach_synthetic_state(seq: dict) -> dict:
         "housing_type": housing_type,
         "marital_status": marital_status,
         "credit_score": credit_score,
+        "liquid_assets_krw": liquid_assets_krw,
         "loan_portfolio": loans,
         "dsr_pct": dsr_pct,
     }

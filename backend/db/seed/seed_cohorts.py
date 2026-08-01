@@ -6,16 +6,19 @@
 벡터를 미리 저장해 두므로 서버가 뜰 때마다 300건을 재임베딩할 필요가 없고,
 C파트는 CohortIndex.load_from_mysql_rows() 로 그대로 읽어 쓰면 된다.
 
-state_json/tx_features_json/event_interval_months/cash_need_krw는 generate_cohorts.py가
-합성한 값을 그대로 옮겨 적재한다. State Embedding/Transaction Embedding 벡터를 만드는 작업은
-history 임베딩과 임베딩 모델/문장 구성 방식을 함께 결정해야 하는 별도 단계(embedding.py 확장)에서
-다루므로, 이 단계에서는 원본 값 저장까지만 담당한다.
+History/State/Transaction 3분리 임베딩 (2026.8 확장): 이벤트 순서만 보던 History Embedding
+외에, State/Transaction Embedding도 함께 계산해 저장한다. 문장 생성은 pipeline/state_builder.py의
+state_dict_to_sentence(), pipeline/tx_features.py의 tx_features_dict_to_sentence()를 그대로
+재사용한다 — 코호트 쪽과 실유저 쿼리 쪽(pipeline/similarity.py)이 같은 함수로 문장을 만들어야
+두 벡터가 같은 공간에서 비교 가능하다.
 """
 
 from sqlalchemy.orm import Session
 
 from backend.db.models import CohortSequence
 from backend.embedding_compat import get_embedder, history_to_sentence
+from pipeline.state_builder import state_dict_to_sentence
+from pipeline.tx_features import tx_features_dict_to_sentence
 
 
 def _load_source_sequences():
@@ -34,14 +37,21 @@ def seed_cohorts(db: Session) -> dict:
     )
     db.flush()
 
-    sentences = [history_to_sentence(s["history"]) for s in sequences]
-    vectors = embedder.embed_batch(sentences)
+    history_sentences = [history_to_sentence(s["history"]) for s in sequences]
+    state_sentences = [state_dict_to_sentence(s["state"]) for s in sequences]
+    tx_sentences = [tx_features_dict_to_sentence(s["tx_features"]) for s in sequences]
 
-    for seq, sentence, vec in zip(sequences, sentences, vectors):
+    history_vectors = embedder.embed_batch(history_sentences)
+    state_vectors = embedder.embed_batch(state_sentences)
+    tx_vectors = embedder.embed_batch(tx_sentences)
+
+    for seq, h_sentence, h_vec, s_vec, t_vec in zip(
+        sequences, history_sentences, history_vectors, state_vectors, tx_vectors
+    ):
         db.add(
             CohortSequence(
                 history_json=seq["history"],
-                event_history_text=sentence,
+                event_history_text=h_sentence,
                 next_event=seq["next_event"],
                 history_length=len(seq["history"]),
                 state_json=seq["state"],
@@ -49,7 +59,9 @@ def seed_cohorts(db: Session) -> dict:
                 event_interval_months=seq.get("event_interval_months"),
                 cash_need_krw=seq.get("cash_need_krw"),
                 cash_need_source=seq.get("cash_need_source"),
-                embedding_vector=[float(x) for x in vec],
+                embedding_vector=[float(x) for x in h_vec],
+                state_embedding_vector=[float(x) for x in s_vec],
+                tx_embedding_vector=[float(x) for x in t_vec],
                 embedding_model=model_name,
                 embedding_dim=dim,
             )

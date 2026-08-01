@@ -204,6 +204,8 @@ class CohortSequence(Base):
     cash_need_krw = Column(BigInteger, nullable=True)
     cash_need_source = Column(String(200), nullable=True)
     embedding_vector = Column(JSON, nullable=False)
+    state_embedding_vector = Column(JSON, nullable=False)
+    tx_embedding_vector = Column(JSON, nullable=False)
     embedding_model = Column(String(50), nullable=False)
     embedding_dim = Column(SmallInteger, nullable=False)
     created_at = Column(DateTime, nullable=False, server_default=func.now())

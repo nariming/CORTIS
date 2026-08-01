@@ -78,27 +78,47 @@ class TransactionFeatures:
         }
 
     def to_sentence(self) -> str:
-        """State Embedding 문장/유저 컨텍스트에 이어붙일 한국어 조각."""
-        parts: List[str] = []
+        """Transaction Embedding 문장/유저 컨텍스트에 이어붙일 한국어 조각."""
+        return tx_features_dict_to_sentence(self.to_dict())
 
-        def _direction(v: float) -> str:
-            if v > TREND_NOISE_THRESHOLD:
-                return "증가"
-            if v < -TREND_NOISE_THRESHOLD:
-                return "감소"
-            return "유지"
 
-        if self.income_growth is not None:
-            parts.append(f"최근 소득 {_direction(self.income_growth)}({self.income_growth:+.0%})")
-        if self.expense_growth is not None:
-            parts.append(f"지출 {_direction(self.expense_growth)}({self.expense_growth:+.0%})")
-        if self.saving_growth is not None:
-            parts.append(f"저축성 이체 {_direction(self.saving_growth)}({self.saving_growth:+.0%})")
-        if self.cashflow_volatility is not None:
-            parts.append(f"현금흐름 변동성 {self.cashflow_volatility:.2f}")
-        parts.extend(self.signals)
+def tx_features_dict_to_sentence(d: dict) -> str:
+    """tx_features dict(실유저 TransactionFeatures.to_dict() 또는 코호트 tx_features_json과
+    동일 스키마) -> Transaction Embedding 대상 문장.
 
-        return ", ".join(parts) if parts else "거래내역 부족(추세 산출 불가)"
+    실유저 쪽(TransactionFeatures.to_sentence())과 코호트 쪽(generate_cohorts.py가 합성한
+    tx_features_json)이 이 함수 하나를 공유해야, 두 벡터가 같은 문장 구조에서 나와
+    코사인 유사도가 의미를 갖는다 — 문장 생성 로직이 두 곳에서 따로 구현되면(이전에 as_of
+    기본값이 두 함수에서 갈라졌던 것과 같은 종류의 정합성 문제) 검색 결과가 왜곡된다.
+    """
+    parts: List[str] = []
+
+    def _direction(v: float) -> str:
+        if v > TREND_NOISE_THRESHOLD:
+            return "증가"
+        if v < -TREND_NOISE_THRESHOLD:
+            return "감소"
+        return "유지"
+
+    income_growth = d.get("income_growth")
+    if income_growth is not None:
+        parts.append(f"최근 소득 {_direction(income_growth)}({income_growth:+.0%})")
+
+    expense_growth = d.get("expense_growth")
+    if expense_growth is not None:
+        parts.append(f"지출 {_direction(expense_growth)}({expense_growth:+.0%})")
+
+    saving_growth = d.get("saving_growth")
+    if saving_growth is not None:
+        parts.append(f"저축성 이체 {_direction(saving_growth)}({saving_growth:+.0%})")
+
+    cashflow_volatility = d.get("cashflow_volatility")
+    if cashflow_volatility is not None:
+        parts.append(f"현금흐름 변동성 {cashflow_volatility:.2f}")
+
+    parts.extend(d.get("signals") or [])
+
+    return ", ".join(parts) if parts else "거래내역 부족(추세 산출 불가)"
 
 
 def _month_key(d: date) -> str:

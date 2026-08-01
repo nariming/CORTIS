@@ -49,18 +49,23 @@ def build_user_prompt(
 ) -> str:
     history_str = " -> ".join(confirmed_history) if confirmed_history else "(없음)"
     matches_str = "\n".join(
-        f"- 히스토리: {' -> '.join(m.history)} / 다음 이벤트: {m.next_event} / 유사도: {m.similarity:.2f}"
+        f"- 히스토리: {' -> '.join(m.history)} / 다음 이벤트: {m.next_event} / "
+        f"유사도: {m.similarity:.2f} (history={m.sim_history:.2f}, state={m.sim_state:.2f}, tx={m.sim_tx:.2f})"
         for m in matches
     ) or "(검색된 유사 사례 없음)"
-    counts_str = ", ".join(f"{k} {v}건" for k, v in next_event_counts.items()) or "(집계 없음)"
+    # next_event_counts: {event: {"count": int, "weighted_score": float}}
+    # count만 보여주면 유사도 0.95인 3건과 0.3인 3건을 못 구분하므로 weighted_score도 함께 노출한다.
+    counts_str = ", ".join(
+        f"{k} {v['count']}건(유사도합 {v['weighted_score']:.2f})" for k, v in next_event_counts.items()
+    ) or "(집계 없음)"
 
     return f"""[확정된 이벤트 히스토리]
 {history_str}
 
-[검색된 유사 코호트 top-{len(matches)}]
+[검색된 유사 코호트 top-{len(matches)}] (유사도는 History/State/Transaction 3개 공간의 가중합)
 {matches_str}
 
-[다음 이벤트 집계 (top-k 중)]
+[다음 이벤트 집계 (top-k 중, 건수와 유사도 가중합)]
 {counts_str}
 
 [유저 현재 상황 (참고)]
@@ -90,13 +95,18 @@ class MockReasoner(Reasoner):
     """
 
     def predict(self, confirmed_history, matches, next_event_counts, user_context=None):
+        # next_event_counts: {event: {"count": int, "weighted_score": float}}
         predictions = [
             {
                 "event": event,
-                "evidence_count": count,
-                "reasoning": f"[MOCK] 유사 코호트 {count}건이 '{event}'을(를) 다음 이벤트로 겪음",
+                "evidence_count": agg["count"],
+                "weighted_score": agg["weighted_score"],
+                "reasoning": (
+                    f"[MOCK] 유사 코호트 {agg['count']}건(유사도합 {agg['weighted_score']:.2f})이 "
+                    f"'{event}'을(를) 다음 이벤트로 겪음"
+                ),
             }
-            for event, count in next_event_counts.items()
+            for event, agg in next_event_counts.items()
         ]
 
         is_cold_start = len(confirmed_history) < COLD_START_THRESHOLD or len(matches) < COLD_START_THRESHOLD
