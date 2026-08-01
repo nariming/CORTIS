@@ -186,6 +186,7 @@ def build_existing_loans_from_user_detail(user_detail: dict, today: datetime.dat
             interest_rate=loan["interest_rate"],
             monthly_payment=loan["monthly_payment"],
             remaining_months=remaining_months,
+            rate_type=loan.get("rate_type", "변동"),
         ))
     return loans
 
@@ -214,6 +215,7 @@ def build_refinance_map_from_loan_match(
                 min_rate=product["min_rate"],
                 max_rate=product["max_rate"],
                 max_amount=product["max_amount"],
+                rate_type=product.get("rate_type", "변동"),
             )
             for loan in existing_loans:
                 # product_type 정보가 없으므로(EventLoanGroupOut에 product_type은 있음),
@@ -271,6 +273,9 @@ def build_refinance_map_from_policy_match(
                     min_rate=rate,
                     max_rate=rate,
                     max_amount=loan.balance,  # 정확한 한도 불명 - 보수적 근사, 위 docstring 참고
+                    # rate_type 미지정 -> dataclass 기본값 "변동" 그대로 사용.
+                    # Policy 카탈로그엔 rate_type 필드가 없어 실제 금리구조를 모르므로,
+                    # 스트레스DSR 가산금리를 모르는 채로 0 처리하지 않고 보수적으로 적용한다.
                 )
                 refinance_map[loan.loan_id].append(candidate)
 

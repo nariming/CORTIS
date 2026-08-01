@@ -7,9 +7,11 @@
   - 가중합을 쓰지 않는다. 대신 "제약조건 필터 -> 우선순위 규칙"의 계층형(lexicographic) 구조.
   - 전략은 LLM이 제안하지 않는다. 유한한 액션 공간을 전수탐색(enumerate)해서 뽑는다.
 
-TODO(개발자1 PR #5 merge 후 반영): LoanProduct/UserLoan에 rate_type(고정/변동/혼합형/주기형)
-필드가 추가되면 stress_test()의 "전부 변동금리로 가정" 부분을 실제 분기로 교체할 것.
-그 전까지는 보수적으로 전부 변동금리 취급 (스트레스 금리 100% 적용) - 안전한 쪽으로 근사.
+rate_type(고정/변동/혼합형/주기형) 반영 (2026.8 갱신): 스트레스 DSR은 실제 제도상
+"신규 취급되는 변동금리형 대출"에만 가산금리를 적용하고, 만기까지 고정인 대출은 적용하지 않는다.
+본 파일은 REFINANCE(신규 취급) 액션에 한해 target_product.rate_type을 보고 가산금리를
+분기 적용한다 (KEEP/PREPAY는 기존 대출 유지이므로 신규 취급이 아니라 원래도 가산 대상이 아님).
+근사치는 RATE_TYPE_STRESS_MULTIPLIER 참고 - 혼합형은 정확한 고정기간 데이터가 없어 50%로 근사.
 """
 
 from __future__ import annotations
@@ -32,9 +34,9 @@ class UserFinancialProfile:
     income_volatility: float        # User.income_volatility 그대로
     employment_type: str            # "정규직" / "프리랜서" / "계약직" / "무직" 등
     region_code: str                # "11" = 서울(수도권), 그 외 = 비수도권으로 근사
-    # TODO(개발자1 필드 추가 대기 중): User.liquid_assets_krw 필드가 생기면 여기 채우기.
-    # None인 동안은 PREPAY 액션을 아예 후보에서 제외한다 (현금 있는지 모르는 채로
-    # "전액 조기상환이 항상 제일 이득"이라는 잘못된 결론이 나오는 걸 막기 위함).
+    # User.liquid_assets_krw 매핑 (2026.8 필드 추가됨). None이면 여전히 PREPAY 액션을
+    # 후보에서 제외한다 (현금 있는지 모르는 채로 "전액 조기상환이 항상 제일 이득"이라는
+    # 잘못된 결론이 나오는 걸 막기 위한 안전장치 - 필드가 없던 시절의 방어 로직을 그대로 유지).
     liquid_assets_krw: Optional[int] = None
 
 
@@ -47,6 +49,8 @@ class ExistingLoan:
     interest_rate: float            # 현재 적용금리 (%), UserLoan.interest_rate
     monthly_payment: int            # 현재 월 상환액 (KRW)
     remaining_months: int           # maturity_at 기준 잔여 개월수 (호출부에서 계산해 채움)
+    rate_type: str = "변동"          # UserLoan.rate_type. KEEP/PREPAY는 신규 취급이 아니라서
+                                     # 스트레스DSR 계산엔 안 쓰이지만, 데이터 완전성을 위해 보관.
 
 
 @dataclass
@@ -57,6 +61,8 @@ class RefinanceCandidate:
     min_rate: float
     max_rate: float
     max_amount: int
+    rate_type: str = "변동"  # LoanProduct.rate_type. Policy 기반 후보는 카탈로그에 이 필드가
+                             # 없어 기본값 "변동"(=스트레스 가산 적용) 유지 — 모르면 보수적으로.
 
     def assumed_rate(self) -> float:
         """실제 심사 전이라 확정 금리를 모르므로, 보수적으로 min_rate(최저금리)를 가정.
@@ -227,11 +233,28 @@ def _npv_cost(loan: ExistingLoan, action: LoanAction, discount_rate_annual: floa
     return 0.0
 
 
-def _stress_addon_pct(profile: UserFinancialProfile) -> float:
-    """스트레스 DSR 가산금리 근사 (2025.7 3단계 기준, 변동금리 100% 적용 가정).
-    수도권(서울=region_code '11') 주담대 3.0%p, 그 외(비수도권/신용대출) 0.75%p.
-    TODO: rate_type 필드 들어오면 고정금리는 0 처리하도록 분기 추가."""
+RATE_TYPE_STRESS_MULTIPLIER = {
+    "고정": 0.0,    # 만기까지 금리 확정 - 스트레스 금리 제도 적용 대상이 아님
+    "혼합형": 0.5,  # 일정기간 고정 후 변동 전환 - 실제 규정은 고정기간 길이에 따라 세분화되나
+                    # 상품별 고정기간 데이터가 없어 절반만 적용하는 것으로 근사(발표 시 명시 필요)
+    "주기형": 1.0,  # 짧은 주기로 금리 재고시 - 사실상 변동금리와 동일하게 취급
+    "변동": 1.0,
+}
+
+
+def _base_stress_addon_pct(profile: UserFinancialProfile) -> float:
+    """스트레스 DSR 가산금리 근사 (2025.7 3단계 기준). 지역 구분만 반영한 base 값이고,
+    실제 적용 여부/비율은 rate_type에 따라 _stress_addon_for()에서 최종 결정한다.
+    수도권(서울=region_code '11') 주담대 3.0%p, 그 외(비수도권/신용대출) 0.75%p."""
     return 3.0 if profile.region_code == "11" else 0.75
+
+
+def _stress_addon_for(rate_type: str, profile: UserFinancialProfile) -> float:
+    """신규 취급(REFINANCE) 대출 한 건에 실제로 적용할 스트레스 가산금리(%p).
+    rate_type이 RATE_TYPE_STRESS_MULTIPLIER에 없는 값이면 모르는 값이므로
+    보수적으로 변동금리(배율 1.0)로 취급한다."""
+    multiplier = RATE_TYPE_STRESS_MULTIPLIER.get(rate_type, 1.0)
+    return _base_stress_addon_pct(profile) * multiplier
 
 
 def evaluate_combo(
@@ -252,12 +275,14 @@ def evaluate_combo(
 
     dsr = (monthly_total * 12 / profile.annual_income) * 100 if profile.annual_income else 0.0
 
-    stress_addon = _stress_addon_pct(profile)
-    # 근사: 스트레스 상황에서 월상환액이 (신규금리+가산금리)/신규금리 배율만큼 커진다고 가정
+    # 근사: 스트레스 상황에서 월상환액이 (신규금리+가산금리)/신규금리 배율만큼 커진다고 가정.
+    # 가산금리는 대출 한 건마다 다를 수 있다(신규 상품의 rate_type에 따라 0~100% 적용) -
+    # 그래서 profile 하나에 고정된 stress_addon 대신 action별로 _stress_addon_for()를 호출한다.
     stressed_monthly = 0
     for action in combo:
         loan = loan_by_id[action.loan_id]
         if action.action == "REFINANCE" and action.target_product:
+            stress_addon = _stress_addon_for(action.target_product.rate_type, profile)
             base_rate = action.target_product.assumed_rate()
             stressed_rate = base_rate + stress_addon
             monthly_rate = stressed_rate / 100 / 12
