@@ -33,6 +33,7 @@ def seed_from_youthcenter(db: Session, max_records: int = 100, query: str = "") 
     inserted = 0
     skipped_no_mapping = 0
     skipped_no_trigger = 0
+    needs_review = 0
 
     for raw in raw_rows:
         mapped = map_raw_to_policy(raw)
@@ -40,10 +41,15 @@ def seed_from_youthcenter(db: Session, max_records: int = 100, query: str = "") 
             skipped_no_mapping += 1
             continue
         if not mapped["trigger_events"]:
-            # 우리 도메인의 생애주기 이벤트와 매칭되는 키워드가 하나도 없으면
-            # A파트 트리거 매칭에서 절대 안 뜨는 죽은 데이터라 아예 적재하지 않는다.
             skipped_no_trigger += 1
             continue
+
+        notes = mapped.pop("_structuring_notes", "")
+        verified = mapped.pop("_structuring_verified", True)
+        if not verified:
+            needs_review += 1
+            print(f"  [검수필요] {mapped['policy_name']}: {notes}")
+
         db.merge(Policy(**mapped))
         inserted += 1
 
@@ -53,6 +59,7 @@ def seed_from_youthcenter(db: Session, max_records: int = 100, query: str = "") 
         "inserted": inserted,
         "skipped_no_mapping": skipped_no_mapping,
         "skipped_no_trigger": skipped_no_trigger,
+        "needs_review": needs_review,
     }
 
 
@@ -74,7 +81,8 @@ def main() -> int:
 
     print(
         f"온통청년 적재 완료 — 수신 {result['fetched']}건 / 적재 {result['inserted']}건 / "
-        f"필드매핑 실패 {result['skipped_no_mapping']}건 / 트리거이벤트 없음(스킵) {result['skipped_no_trigger']}건"
+        f"필드매핑 실패 {result['skipped_no_mapping']}건 / 트리거이벤트 없음(스킵) {result['skipped_no_trigger']}건 / "
+        f"검수필요(금액 미검증) {result['needs_review']}건"
     )
     return 0
 
