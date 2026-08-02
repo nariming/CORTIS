@@ -1,37 +1,11 @@
 """
-합성 코호트 이벤트 시퀀스 더미 데이터.
+데모용 페르소나 정의.
 
-실제로는 개발자1이 LLM으로 생성한 300개 시퀀스를 MySQL에 적재하지만,
-개발자2(AI 파이프라인)는 그 전까지 이 더미셋으로 개발/테스트를 진행한다.
-
-각 시퀀스: 확정된 이벤트 히스토리(순서 있는 리스트) + 그 다음 실제 발생한 이벤트.
-이벤트 타입은 기획서에서 규칙 감지 가능한 것으로 추린 8종만 사용:
-  대학생, 졸업, 취업, 이직, 퇴직, 독립(전세), 독립(월세), 결혼, 출산, 창업, 내집마련
-  (문서에서 "감지 가능" 그룹인 신규이체처/이체중단/금액변화 신호로 잡히는 것들)
+(과거에는 이 파일에 시점(event_interval_months) 없는 COHORT_SEQUENCES 더미 리스트가
+있었으나, 실제 코호트 검색은 전부 data/cohort_sequences_300.py의 COHORT_SEQUENCES_300
+(시점·필요자금·state·tx_features 포함, generate_cohorts.py 산출물)을 쓰고 이 리스트는
+어디서도 import되지 않아 2026.8 제거함 — 혼선 방지 목적.)
 """
-
-COHORT_SEQUENCES = [
-    {"history": ["대학생", "졸업", "취업"], "next_event": "독립(월세)"},
-    {"history": ["대학생", "졸업", "취업"], "next_event": "이직"},
-    {"history": ["대학생", "졸업", "취업", "독립(월세)"], "next_event": "결혼"},
-    {"history": ["대학생", "졸업", "취업", "이직"], "next_event": "독립(전세)"},
-    {"history": ["취업"], "next_event": "독립(월세)"},
-    {"history": ["취업"], "next_event": "이직"},
-    {"history": ["취업"], "next_event": "결혼"},
-    {"history": ["이직", "취업"], "next_event": "결혼"},
-    {"history": ["이직", "취업"], "next_event": "독립(전세)"},
-    {"history": ["취업", "독립(전세)"], "next_event": "결혼"},
-    {"history": ["취업", "독립(전세)"], "next_event": "내집마련"},
-    {"history": ["취업", "결혼"], "next_event": "출산"},
-    {"history": ["취업", "결혼"], "next_event": "내집마련"},
-    {"history": ["창업"], "next_event": "결혼"},
-    {"history": ["창업", "취업"], "next_event": "독립(월세)"},
-    {"history": ["퇴직", "취업"], "next_event": "이직"},
-    {"history": ["대학생", "졸업", "취업", "결혼"], "next_event": "출산"},
-    {"history": ["대학생", "졸업", "창업"], "next_event": "취업"},
-    {"history": ["취업", "독립(월세)", "이직"], "next_event": "독립(전세)"},
-    {"history": ["취업", "독립(월세)"], "next_event": "이직"},
-]
 
 # 데모 대비용: 실제 페르소나 vs 대조군 유저
 #
