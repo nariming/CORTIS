@@ -182,7 +182,14 @@ class LifeEvent(Base):
 
 
 class CohortSequence(Base):
-    """합성 코호트 300개 + 사전 임베딩. C파트 CohortIndex 가 그대로 읽어간다."""
+    """합성 코호트 300개 + 사전 임베딩. C파트 CohortIndex 가 그대로 읽어간다.
+
+    state_json/tx_features_json은 generate_cohorts.py가 next_event와 개연성 있게 합성한
+    값이다(실거래 시뮬레이션 결과가 아니라 검색 코퍼스 자체를 저작한 것 — 파일 상단
+    "State/Transaction feature 확장" 절 참고). 스키마는 pipeline/state_builder.py의
+    UserState / pipeline/tx_features.py의 TransactionFeatures와 동일하게 맞춰,
+    코호트 쪽 값과 실유저 쿼리 쪽 값이 같은 형태로 비교되도록 한다.
+    """
 
     __tablename__ = "cohort_sequences"
 
@@ -191,7 +198,14 @@ class CohortSequence(Base):
     event_history_text = Column(String(500), nullable=False)
     next_event = Column(String(30), nullable=False)
     history_length = Column(SmallInteger, nullable=False)
+    state_json = Column(JSON, nullable=False)
+    tx_features_json = Column(JSON, nullable=False)
+    event_interval_months = Column(SmallInteger, nullable=True)
+    cash_need_krw = Column(BigInteger, nullable=True)
+    cash_need_source = Column(String(200), nullable=True)
     embedding_vector = Column(JSON, nullable=False)
+    state_embedding_vector = Column(JSON, nullable=False)
+    tx_embedding_vector = Column(JSON, nullable=False)
     embedding_model = Column(String(50), nullable=False)
     embedding_dim = Column(SmallInteger, nullable=False)
     created_at = Column(DateTime, nullable=False, server_default=func.now())

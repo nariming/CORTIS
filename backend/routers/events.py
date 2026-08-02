@@ -25,6 +25,7 @@ from backend.schemas import (
     HistoryOut,
     LifeEventOut,
 )
+from pipeline.state_builder import build_user_state
 
 router = APIRouter(tags=["events"])
 
@@ -34,16 +35,25 @@ def build_user_context(user, db: Session) -> str:
 
     C파트 reasoning.build_user_prompt(user_context=...) 에 넘길 값을 백엔드가 만들어 준다.
     (프롬프트에 넣을 사실은 DB가 원천이어야 하므로 여기서 조립하는 게 맞다)
+
+    state_builder.build_user_state()가 계산한 값(DSR, 거래 트렌드)을 그대로 이어붙인다 —
+    프로필/대출 요약과 거래 트렌드가 서로 다른 두 함수에서 각각 조립되면 값이 어긋날 수 있어,
+    State Builder 하나를 두 곳(State Embedding, 이 함수)이 공유하도록 통일했다.
     """
+    state = build_user_state(user, txs=list(user.transactions), as_of=None)
+
     loans = user.loans
     loan_desc = (
         ", ".join(f"{ln.product_id} 잔액 {ln.balance:,}원(월 {ln.monthly_payment:,}원)" for ln in loans)
         or "보유 대출 없음"
     )
+    dsr_desc = f"DSR {state.dsr_pct:.1f}%" if state.dsr_pct is not None else "대출 없음"
+
     return (
         f"{user.age}세 {user.employment_type}, 월평균 소득 {user.monthly_income_avg:,}원 "
         f"(소득 변동성 {float(user.income_volatility):.2f}), 거주형태 {user.housing_type}, "
-        f"혼인상태 {user.marital_status}. 보유 대출: {loan_desc}."
+        f"혼인상태 {user.marital_status}. 보유 대출: {loan_desc} ({dsr_desc}). "
+        f"최근 거래 추세: {state.tx_features.to_sentence()}"
     )
 
 

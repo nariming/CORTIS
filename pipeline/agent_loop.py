@@ -17,9 +17,11 @@ from dataclasses import dataclass, field
 
 from .similarity import CohortIndex
 from .reasoning import Reasoner, PredictionResult
+from .scenario_tree import build_scenario_tree
 from . import backend_client
 from .portfolio import (
     UserFinancialProfile, ExistingLoan, select_best_portfolio, build_watch_conditions,
+    compute_event_based_timeline,
 )
 from .portfolio_summary import build_summary_input, get_summarizer, validate_summary_numbers
 
@@ -28,6 +30,11 @@ from .portfolio_summary import build_summary_input, get_summarizer, validate_sum
 class AgentState:
     user_id: str
     confirmed_history: List[str]
+    # State/Transaction Embedding 검색용. 미리 채워서 넘겨도 되고, None으로 두면
+    # on_event_confirmed()가 backend_client.fetch_user_detail()/fetch_user_transactions()로
+    # 자동으로 채운다(서버 미기동 등으로 실패하면 History만으로 안전하게 폴백).
+    query_state: Optional[dict] = None
+    query_tx: Optional[dict] = None
 
 
 @dataclass
@@ -66,16 +73,22 @@ class CortisAgent:
         self.on_portfolio_callback = on_portfolio_callback or self._default_portfolio_stub_callback
 
     def _default_stub_callback(self, user_id: str, result: PredictionResult, updated_history: List[str]):
-        """서버 없이 로직만 확인할 때 쓰는 콘솔 출력. 실제 A파트 호출은
-        demo_full_flow.py 의 backend_client.request_policy_match() 를 참고."""
-        print(f"  [MOCK] 예측 완료 (user={user_id}, history={updated_history})")
+        """서버 없이 로직만 확인할 때 쓰는 콘솔 출력.
+
+        라벨을 "[AGENT]"로 표기한다 — 이전엔 "[MOCK]"으로 고정 표기했는데, 이 콜백은
+        MockReasoner든 AnthropicReasoner든 상관없이 항상 호출되는 공용 콜백이라
+        실제로 LLM_BACKEND=anthropic으로 실행돼도 "[MOCK]"이 찍혀 오해를 부를 수 있었다.
+        실제 A파트 호출은 demo_full_flow.py 의 backend_client.request_policy_match() 를 참고."""
+        print(f"  [AGENT] 예측 완료 (user={user_id}, history={updated_history})")
         for pred in result.predictions:
-            print(f"  [MOCK] -> A파트라면 '{pred['event']}' 관련 정책 매칭을 요청했을 것: {pred.get('reasoning', '')}")
+            print(f"  [AGENT] -> A파트라면 '{pred['event']}' 관련 정책 매칭을 요청했을 것: {pred.get('reasoning', '')}")
+        for s in result.scenarios:
+            print(f"  [AGENT] {s.label}: {s.path_str()} (결합확률 {s.joint_probability_pct}%)")
 
     def _default_portfolio_stub_callback(self, user_id: str, result: PortfolioDecisionResult):
-        print(f"  [MOCK] 포트폴리오 결정 완료 (user={user_id}, 검증통과={result.validated})")
-        print(f"  [MOCK] {result.summary}")
-        print(f"  [MOCK] 감시조건: {result.watch_conditions}")
+        print(f"  [AGENT] 포트폴리오 결정 완료 (user={user_id}, 검증통과={result.validated})")
+        print(f"  [AGENT] {result.summary}")
+        print(f"  [AGENT] 감시조건: {result.watch_conditions}")
 
     def on_event_confirmed(self, state: AgentState, new_event: str, user_context: Optional[str] = None) -> PredictionResult:
         """이벤트가 규칙기반 감지+확인질문을 거쳐 '확정'되었을 때 호출되는 진입점.
@@ -85,7 +98,23 @@ class CortisAgent:
         """
         state.confirmed_history.append(new_event)
 
-        matches = self.index.search(state.confirmed_history, top_k=self.top_k)
+        # State/Transaction Embedding 검색을 위해 필요한 값이 아직 안 채워졌으면 HTTP로 채운다.
+        # (서버 미기동 등으로 실패하면 History만으로 안전하게 폴백 — CohortIndex.search()가
+        # query_state/query_tx=None을 이미 그렇게 처리하도록 설계돼 있음)
+        if state.query_state is None or state.query_tx is None:
+            try:
+                user_detail = backend_client.fetch_user_detail(state.user_id, self.base_url)
+                txs = backend_client.fetch_user_transactions(state.user_id, self.base_url)
+                state.query_state, state.query_tx = backend_client.build_query_state_and_tx(user_detail, txs)
+            except Exception as e:
+                print(f"  [WARN] State/Transaction 조회 실패 - History만으로 검색: {e}")
+
+        matches = self.index.search(
+            state.confirmed_history,
+            query_state=state.query_state,
+            query_tx=state.query_tx,
+            top_k=self.top_k,
+        )
         counts = self.index.aggregate_next_events(matches)
         result = self.reasoner.predict(
             confirmed_history=state.confirmed_history,
@@ -93,6 +122,16 @@ class CortisAgent:
             next_event_counts=counts,
             user_context=user_context,
         )
+
+        # Scenario Tree는 LLM을 호출하지 않는 별도 계산(코호트 재검색)이라 Reasoner 책임 밖에서
+        # 채운다 — LLM 호출 실패/느림과 무관하게 항상 채워지도록 별도로 실행.
+        try:
+            result.scenarios = build_scenario_tree(
+                self.index, state.confirmed_history,
+                query_state=state.query_state, query_tx=state.query_tx, top_k=self.top_k,
+            )
+        except Exception as e:
+            print(f"  [WARN] Scenario Tree 계산 스킵: {e}")
 
         self.on_predict_callback(state.user_id, result, state.confirmed_history)
 
@@ -104,6 +143,28 @@ class CortisAgent:
             print(f"  [WARN] 포트폴리오 결정 단계 스킵 (서버 미기동 등): {e}")
 
         return result
+
+    @staticmethod
+    def _top_prediction_timeline(prediction: PredictionResult):
+        """예측된 '다음 이벤트' 후보 중 최상위(모순 없는 것 우선 정렬된 predictions[0])를
+        EligibilityTimelineEntry로 변환한다 — 6단계에서 확률/시점/필요자금까지 구조화된
+        예측 결과가 나왔으니, 이걸 이벤트 이름 하나로 뭉개지 않고 그대로 포트폴리오
+        레이어(build_watch_conditions)에 넘기는 지점이 바로 여기다.
+
+        predictions가 비어있으면(검색 결과 없음 등) None을 반환해 감시조건에서 자연스럽게
+        제외되게 한다 — 근거 없이 이 항목을 채우지 않는다.
+        """
+        if not prediction.predictions:
+            return None
+        top = prediction.predictions[0]
+        return compute_event_based_timeline(
+            predicted_event=top["event"],
+            evidence_count=top["evidence_count"],
+            policy_or_product_name=top["event"],
+            expected_timing_months=top.get("expected_timing_months"),
+            expected_cash_need_krw=top.get("expected_cash_need_krw"),
+            cash_need_source=top.get("cash_need_source"),
+        )
 
     def _run_portfolio_decision(
         self,
@@ -170,7 +231,10 @@ class CortisAgent:
         if not validated:
             print(f"  [WARN] LLM 출력에 검증 안 된 숫자 발견: {bad_numbers} (사용자에게 노출 전 재검토 필요)")
 
-        watch_conditions = build_watch_conditions(best, event_name, event_confirmed)
+        watch_conditions = build_watch_conditions(
+            best, event_name, event_confirmed,
+            predicted_next_event=self._top_prediction_timeline(prediction),
+        )
 
         decision = PortfolioDecisionResult(
             summary=summary,

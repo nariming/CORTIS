@@ -10,10 +10,13 @@ CohortIndex에 로드하는 연결 모듈.
 import os
 import requests
 import datetime
+from dataclasses import dataclass
+from typing import List, Optional, Tuple
 from pipeline.embedding import EmbeddingProvider
 from pipeline.similarity import CohortIndex
 from pipeline.contracts import PredictionSaveRequest, PolicyMatchRequest
-from pipeline.portfolio import UserFinancialProfile, ExistingLoan, RefinanceCandidate
+from pipeline.portfolio import UserFinancialProfile, ExistingLoan, RefinanceCandidate, LoanAction, evaluate_combo
+from pipeline.tx_features import extract_transaction_features
 
 BACKEND_BASE_URL = "http://localhost:8000"
 
@@ -125,6 +128,88 @@ def fetch_user_detail(user_id: str, base_url: str = BACKEND_BASE_URL) -> dict:
     return resp.json()
 
 
+def fetch_user_transactions(user_id: str, base_url: str = BACKEND_BASE_URL) -> list:
+    """GET /users/{user_id}/transactions 호출. TransactionOut[] 그대로 반환."""
+    resp = _session.get(f"{base_url}/users/{user_id}/transactions", timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+@dataclass
+class _TxRecord:
+    """GET /users/{id}/transactions 응답(JSON dict)을
+    tx_features.extract_transaction_features()가 기대하는 속성 접근 방식
+    (.tx_date/.amount/.category/.counterparty/.memo)에 맞춰주는 어댑터.
+
+    ORM Transaction(backend/db/models.py)과 속성명을 동일하게 맞춰서, 백엔드 프로세스
+    내부에서 직접 호출하는 pipeline/state_builder.py와 HTTP로만 접근 가능한 이 모듈이
+    같은 tx_features 계산 함수를 그대로 재사용할 수 있게 한다 — 계산 로직이 두 곳에서
+    따로 구현되면(과거 as_of 기본값이 갈라졌던 것과 같은 종류의) 정합성이 깨진다.
+    """
+    tx_date: datetime.date
+    amount: int
+    category: str
+    counterparty: str
+    memo: Optional[str] = None
+
+
+def _tx_records_from_response(txs: list) -> List[_TxRecord]:
+    return [
+        _TxRecord(
+            tx_date=datetime.date.fromisoformat(t["tx_date"]),
+            amount=t["amount"],
+            category=t["category"],
+            counterparty=t["counterparty"],
+            memo=t.get("memo"),
+        )
+        for t in txs
+    ]
+
+
+def build_query_state_and_tx(
+    user_detail: dict,
+    txs: list,
+    as_of: Optional[datetime.date] = None,
+) -> Tuple[dict, dict]:
+    """GET /users/{user_id} + GET /users/{user_id}/transactions 응답 ->
+    CohortIndex.search()의 query_state/query_tx 인자로 바로 넘길 수 있는 dict 한 쌍.
+
+    pipeline/state_builder.py의 build_user_state()가 백엔드 프로세스 내부에서(ORM User
+    객체 직접 접근) 하는 계산을, agent_loop.py처럼 HTTP로만 접근 가능한 클라이언트 쪽에서
+    동일하게 재현한다. DSR은 동일하게 portfolio.evaluate_combo()(전부 KEEP 조합)를
+    재사용해 두 경로가 서로 다른 공식을 쓰지 않게 한다 — 대출이 없으면 0%가 아니라
+    None을 반환하는 원칙도 동일하게 지킨다.
+
+    as_of를 별도로 넘기지 않으면 거래내역의 마지막 날짜로 자동 확정한다 — 대출 잔여기간
+    계산과 거래 트렌드 계산이 서로 다른 기준일을 쓰면 안 된다는 원칙(state_builder.py에서
+    이미 한 번 발견된 버그와 동일한 종류)을 여기서도 그대로 지킨다.
+    """
+    tx_records = _tx_records_from_response(txs)
+    resolved_as_of = as_of or max((t.tx_date for t in tx_records), default=datetime.date.today())
+
+    existing_loans = build_existing_loans_from_user_detail(user_detail, today=resolved_as_of)
+    profile = build_profile_from_user_detail(user_detail)
+
+    dsr_pct = None
+    if existing_loans:
+        keep_combo = [LoanAction(loan_id=ln.loan_id, action="KEEP") for ln in existing_loans]
+        dsr_pct = evaluate_combo(keep_combo, existing_loans, profile).dsr_pct
+
+    query_state = {
+        "age": user_detail["age"],
+        "employment_type": user_detail["employment_type"],
+        "monthly_income": user_detail["monthly_income_avg"],
+        "housing_type": user_detail["housing_type"],
+        "marital_status": user_detail["marital_status"],
+        "credit_score": user_detail.get("credit_score"),
+        "liquid_assets_krw": user_detail.get("liquid_assets_krw", 0),
+        "dsr_pct": dsr_pct,
+    }
+    query_tx = extract_transaction_features(tx_records, as_of=resolved_as_of).to_dict()
+
+    return query_state, query_tx
+
+
 def request_loan_match(
     user_id: str,
     event_types: list,
@@ -154,8 +239,8 @@ def request_loan_match(
 def build_profile_from_user_detail(user_detail: dict) -> UserFinancialProfile:
     """GET /users/{user_id} 응답 -> portfolio.UserFinancialProfile.
 
-    liquid_assets_krw는 아직 backend에 필드가 없어 None으로 둔다
-    (개발자1 필드 추가되면 user_detail.get("liquid_assets_krw")로 채우기만 하면 됨).
+    liquid_assets_krw는 UserOut 스키마(backend/schemas.py)에 이미 포함돼 있어 그대로 반영된다
+    (과거 이 필드가 없던 시절 주석이 남아있었는데, 스키마 확인 결과 이미 존재해 갱신함).
     """
     return UserFinancialProfile(
         user_id=user_detail["user_id"],
@@ -163,7 +248,7 @@ def build_profile_from_user_detail(user_detail: dict) -> UserFinancialProfile:
         income_volatility=user_detail["income_volatility"],
         employment_type=user_detail["employment_type"],
         region_code=user_detail["region_code"],
-        liquid_assets_krw=user_detail.get("liquid_assets_krw"),  # 필드 생기면 자동 반영
+        liquid_assets_krw=user_detail.get("liquid_assets_krw"),
     )
 
 

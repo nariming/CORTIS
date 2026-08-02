@@ -36,6 +36,11 @@ def load_cohort_rows(db: Session, embedding_model: Optional[str] = None) -> List
             "event_history_text": c.event_history_text,
             "next_event": c.next_event,
             "embedding_vector": c.embedding_vector,
+            "state_embedding_vector": c.state_embedding_vector,
+            "tx_embedding_vector": c.tx_embedding_vector,
+            "cash_need_krw": c.cash_need_krw,
+            "cash_need_source": c.cash_need_source,
+            "event_interval_months": c.event_interval_months,
         }
         for c in query.order_by(CohortSequence.cohort_id).all()
     ]
