@@ -46,7 +46,10 @@ def run():
 
         print(f"\n[예측 결과] confidence={result.confidence_level} ({result.confidence_note})")
         for p in result.predictions:
-            print(f"  - {p['event']} (근거 {p['evidence_count']}건): {p['reasoning']}")
+            timing = f"{p['expected_timing_months']:.0f}개월 후" if p['expected_timing_months'] is not None else "시점 추정 불가"
+            cash = f"약 {p['expected_cash_need_krw']:,}원" if p['expected_cash_need_krw'] is not None else "해당 없음"
+            print(f"  - {p['event']}: 확률 {p['probability_pct']}% / 예상시점 {timing} / 예상필요자금 {cash}")
+            print(f"      근거 {p['evidence_count']}건 — {p['reasoning']}")
 
 
 if __name__ == "__main__":
