@@ -216,6 +216,46 @@
     font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--ink-soft);
     margin-top: 40px; text-align: center; line-height: 1.8;
   }
+
+  /* 포트폴리오 결정 레이어 */
+  .dsr-compare {
+    display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px;
+  }
+  .dsr-compare .num { font-family: 'Fraunces', serif; font-weight: 600; font-size: 30px; }
+  .dsr-compare .arrow { color: var(--ink-soft); font-size: 18px; }
+  .dsr-compare .num.after { color: var(--gold); }
+  .dsr-savings {
+    font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: var(--green);
+    margin-bottom: 18px;
+  }
+  .dsr-savings.zero { color: var(--ink-soft); }
+
+  .summary-field { margin-bottom: 14px; }
+  .summary-field:last-child { margin-bottom: 0; }
+  .summary-field .label {
+    font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--gold); margin-bottom: 3px;
+  }
+  .summary-field .value { font-size: 14px; line-height: 1.6; }
+
+  .watch-list { list-style: none; margin: 12px 0 0; padding: 0; }
+  .watch-list li {
+    font-size: 12.5px; color: var(--ink-soft); line-height: 1.6;
+    padding: 8px 0 8px 16px; border-top: 1px dotted var(--line); position: relative;
+  }
+  .watch-list li:first-child { border-top: none; }
+  .watch-list li::before {
+    content: '›'; position: absolute; left: 0; top: 8px; color: var(--gold); font-weight: 700;
+  }
+
+  .warn-box {
+    background: var(--clay-soft); color: var(--clay); border: 1px solid var(--clay);
+    border-radius: 4px; padding: 14px 16px; font-size: 13.5px; line-height: 1.6;
+  }
+  .unvalidated-note {
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--clay);
+    margin-top: 12px;
+  }
 </style>
 </head>
 <body>
@@ -251,6 +291,11 @@
   <div class="panel" id="policyPanel" style="display:none;">
     <div class="panel-title">A파트 — 정책 자격 재판단</div>
     <div id="policyContent"></div>
+  </div>
+
+  <div class="panel" id="portfolioPanel" style="display:none;">
+    <div class="panel-title">포트폴리오 결정 레이어 — NPV·DSR</div>
+    <div id="portfolioContent"></div>
   </div>
 
   <div class="server-hint">
@@ -402,6 +447,9 @@ async function onConfirm(userId, eventId, eventType) {
     const info = await fetchJSON(`${DEMO}/demo/history/${userId}`);
     renderLedger(info.confirmed_history, false);
     await runPrediction(userId);
+    // 방금 확정된 이벤트를 근거로 포트폴리오(NPV/DSR) 재계산 — agent_loop.py의
+    // on_event_confirmed()가 예측 직후 실제로 하는 일과 동일한 순서.
+    await runPortfolio(userId, eventType);
   } catch (err) {
     showError(detectBox, err);
   }
@@ -472,6 +520,62 @@ function renderPolicy(groups) {
       </div>
     `;
   }).join('');
+}
+
+async function runPortfolio(userId, eventName) {
+  const panel = document.getElementById('portfolioPanel');
+  const box = document.getElementById('portfolioContent');
+  panel.style.display = 'block';
+  box.innerHTML = '<div class="loading"><div class="spinner"></div>대환·조기상환·신규대출 조합 전수탐색 중…</div>';
+
+  try {
+    const data = await fetchJSON(`${DEMO}/demo/portfolio`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, event_name: eventName, event_confirmed: true }),
+    });
+    renderPortfolio(data);
+  } catch (err) {
+    // 422 = 이 이벤트로는 판단할 근거(필요자금 등)가 없어 전략을 생략한 정상 케이스
+    if (String(err.message).startsWith('422')) {
+      box.innerHTML = `<div class="empty-note">'${eventName}' 이벤트만으로는 대출 재구성 여부를 판단할 근거가 없어 이번엔 건너뜁니다.</div>`;
+    } else {
+      showError(box, err);
+    }
+  }
+}
+
+function renderPortfolio(d) {
+  const box = document.getElementById('portfolioContent');
+
+  if (d.feasibility_warning) {
+    box.innerHTML = `<div class="warn-box">⚠ ${d.feasibility_warning}</div>`;
+    return;
+  }
+
+  const savings = d.npv_savings || 0;
+  const savingsText = savings > 0
+    ? `KEEP 대비 NPV ${savings.toLocaleString()}원 절감`
+    : (savings < 0 ? `KEEP 대비 NPV ${Math.abs(savings).toLocaleString()}원 더 듦` : '기존 대출 없음 — 신규 조달 판단');
+  const s = d.summary || {};
+
+  box.innerHTML = `
+    <div class="dsr-compare">
+      <span class="num">${d.dsr_before}%</span>
+      <span class="arrow">→</span>
+      <span class="num after">${d.dsr_after}%</span>
+    </div>
+    <div class="dsr-savings ${savings === 0 ? 'zero' : ''}">${savingsText}</div>
+
+    <div class="summary-field"><div class="label">When</div><div class="value">${s.when || '—'}</div></div>
+    <div class="summary-field"><div class="label">How much</div><div class="value">${s.how_much || '—'}</div></div>
+    <div class="summary-field"><div class="label">Effect</div><div class="value">${s.effect || '—'}</div></div>
+    <div class="summary-field"><div class="label">Comparison</div><div class="value">${s.comparison || '—'}</div></div>
+    <div class="summary-field"><div class="label">Next action</div><div class="value">${s.next_action || '—'}</div></div>
+
+    <ul class="watch-list">${(d.watch_conditions || []).map(w => `<li>${w}</li>`).join('')}</ul>
+    ${!d.validated ? '<div class="unvalidated-note">⚠ LLM 요약 자동검증 미통과 — 사용자 노출 전 재검토 필요</div>' : ''}
+  `;
 }
 
 loadUsers();
