@@ -44,7 +44,8 @@ SYSTEM_PROMPT = """당신은 청년 금융 생애주기 이벤트를 예측하�
    모순 예시: 유저가 이미 월세로 거주 중인데 "독립(월세)" 후보가 있는 경우,
    유저가 이미 기혼인데 "결혼" 후보가 있는 경우 등. 모순이 있으면 is_consistent를 false로,
    consistency_note에 이유를 적으세요. 모순이 없으면 is_consistent는 true, consistency_note는
-   빈 문자열로 두세요.
+   빈 문자열로 두세요. [이벤트별 집계]에 나열된 이벤트에 대해서만 판단하면 됩니다
+   (확률이 낮아 생략된 이벤트는 판단하지 않아도 됩니다 - 코드가 집계값을 그대로 사용합니다).
 2. Reasoning: population 수준 사전분포(코호트 검색 결과, History/State/Transaction 유사도
    breakdown)에 이 유저의 개인 신호가 어떻게 결합되어 이 결과가 나왔는지 1-2문장으로
    설명하세요. 검색된 유사 코호트 사례만을 근거로 사용하고, 근거 없는 확률/금액/개월수를
@@ -59,7 +60,7 @@ SYSTEM_PROMPT = """당신은 청년 금융 생애주기 이벤트를 예측하�
   "confidence_note": "이벤트 분포가 특정 이벤트에 집중돼 있는지, 유저 상태와 모순되는 후보가
     있는지 등을 참고해 확신도 판단 이유를 서술 (confidence_level 자체는 코드가 결정합니다)",
   "suggested_preparations": [
-    {"event": "이벤트명", "action": "A/B파트에 미리 요청할 사전 조치"}
+    {"event": "이벤트명", "action": "A/B파트에 미리 요청할 사전 조치 (최대 3개까지만 작성)"}
   ]
 }"""
 
@@ -145,17 +146,35 @@ def _merge_predictions(next_event_counts: dict, llm_items: List[dict]) -> List[d
     return merged
 
 
+MAX_EVENTS_FOR_LLM_REVIEW = 5  # 이 개수를 넘는 하위 후보는 LLM 판단 없이 코드 집계값만 사용
+
+
 def build_user_prompt(
     confirmed_history: List[str],
     matches: List[CohortMatch],
     next_event_counts: dict,
     user_context: Optional[str] = None,
 ) -> str:
+    """LLM에게 보낼 프롬프트. next_event_counts에 이벤트가 많을 때(top_k를 넉넉히 주면
+    8~10개까지 흔함) 전부에 대해 reasoning을 쓰게 하면 max_tokens를 넘겨 JSON이 잘리는
+    사고가 났다(실제로 top_k=15 검색에서 재현됨) — 그래서 확률 상위 MAX_EVENTS_FOR_LLM_REVIEW개만
+    LLM에게 판단을 요청하고, 그 밖의 하위 후보는 프롬프트에 아예 안 보여준다.
+    하위 후보는 어차피 근거(확률)가 약해 LLM 판단의 가치도 낮고, _merge_predictions()가
+    이들을 is_consistent=True(기본값)로 그대로 최종 결과에 포함시키므로 결과에서 사라지지 않는다.
+    """
     history_str = " -> ".join(confirmed_history) if confirmed_history else "(없음)"
+    top_events_agg = list(next_event_counts.items())[:MAX_EVENTS_FOR_LLM_REVIEW]
+    top_event_names = {event for event, _ in top_events_agg}
+    omitted = len(next_event_counts) - len(top_events_agg)
+
+    # 원본 매치 목록도 top_event_names에 속한 것만 보여준다 — 안 그러면 "이벤트별 집계"에서는
+    # 5개로 줄였는데 원본 매치 목록엔 15개까지 다 보여서, LLM이 그 목록을 보고 집계에 없는
+    # 이벤트까지 자기 판단으로 설명을 늘려 JSON이 잘리는 사고가 실제로 재현됐다(top_k=15 검색).
+    filtered_matches = [m for m in matches if m.next_event in top_event_names]
     matches_str = "\n".join(
         f"- 히스토리: {' -> '.join(m.history)} / 다음 이벤트: {m.next_event} / "
         f"유사도: {m.similarity:.2f} (history={m.sim_history:.2f}, state={m.sim_state:.2f}, tx={m.sim_tx:.2f})"
-        for m in matches
+        for m in filtered_matches
     ) or "(검색된 유사 사례 없음)"
 
     def _fmt_event_agg(event: str, agg: dict) -> str:
@@ -166,15 +185,19 @@ def build_user_prompt(
             f"예상시점 {timing}, 예상필요자금 {cash}"
         )
 
-    counts_str = "\n".join(_fmt_event_agg(k, v) for k, v in next_event_counts.items()) or "(집계 없음)"
+    counts_str = "\n".join(_fmt_event_agg(k, v) for k, v in top_events_agg) or "(집계 없음)"
+    if omitted > 0:
+        counts_str += f"\n(이 외 확률이 낮은 이벤트 {omitted}개는 생략 - 코드가 집계값을 그대로 사용)"
 
     return f"""[확정된 이벤트 히스토리]
 {history_str}
 
-[검색된 유사 코호트 top-{len(matches)}] (유사도는 History/State/Transaction 3개 공간의 가중합)
+[검색된 유사 코호트 중 아래 집계 대상 이벤트에 해당하는 것만 표시] (유사도는 History/State/Transaction 3개 공간의 가중합)
 {matches_str}
 
-[이벤트별 집계 - 확률/시점/필요자금은 코드가 이미 계산한 값입니다. 이 숫자를 바꾸지 마세요]
+[이벤트별 집계 - 확률/시점/필요자금은 코드가 이미 계산한 값입니다. 이 숫자를 바꾸지 마세요.
+ predictions 배열은 반드시 아래 나열된 이벤트만 포함해야 합니다 - 나열되지 않은 이벤트를
+ 추가로 판단하거나 생성하지 마세요]
 {counts_str}
 
 [유저 현재 상황 (참고 - Rerank/Critic 판단에 사용)]
@@ -251,7 +274,7 @@ class AnthropicReasoner(Reasoner):
         user_prompt = build_user_prompt(confirmed_history, matches, next_event_counts, user_context)
         resp = self._client.messages.create(
             model=self.model,
-            max_tokens=2000,
+            max_tokens=4000,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_prompt}],
         )

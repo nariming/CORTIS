@@ -64,6 +64,11 @@ class PortfolioSummaryInput:
         """검증가드가 대조할 '진짜 나올 수 있는 숫자' 전체 집합.
 
         음수는 문장에서 보통 부호 없이 표기되므로(예: "41만원 더 저렴"), 절댓값도 함께 허용한다.
+
+        best_actions_desc/second_best_desc 문자열 안에도 숫자가 박혀 있다(예: 조기상환액,
+        대환 대상 대출 잔액 등) — 이 숫자들도 프롬프트에 그대로 노출되므로 LLM이 그대로
+        인용하면 정당한 인용이지 지어낸 숫자가 아니다. 이 목록에서 빠뜨리면(과거에 실제로
+        빠뜨려져 있었음) LLM이 프롬프트에 있는 숫자를 그대로 썼는데도 검증에 걸려버린다.
         """
         raw = [
             self.monthly_payment_before, self.monthly_payment_after,
@@ -84,6 +89,18 @@ class PortfolioSummaryInput:
                 numbers.add(str(abs(n)))  # 부호 없는 표기 허용
                 if abs(n) >= 10000:
                     numbers.add(str(round(abs(n) / 10000)))  # 만원 단위 축약 표기 허용
+
+        # best_actions_desc/second_best_desc 문자열 속 숫자(조기상환액, 대환 대상 대출 잔액 등)도
+        # 프롬프트에 그대로 노출되는 값이므로 허용 목록에 포함한다.
+        desc_text = " ".join(self.best_actions_desc)
+        if self.second_best_desc:
+            desc_text += " " + self.second_best_desc
+        for m in re.findall(r"\d+(?:,\d{3})*(?:\.\d+)?", desc_text):
+            cleaned = m.replace(",", "")
+            numbers.add(cleaned)
+            if cleaned.isdigit() and int(cleaned) >= 10000:
+                numbers.add(str(round(int(cleaned) / 10000)))  # 만원 단위 축약 표기도 허용
+
         return numbers
 
 

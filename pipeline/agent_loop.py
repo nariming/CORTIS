@@ -30,12 +30,9 @@ from .portfolio_summary import build_summary_input, get_summarizer, validate_sum
 class AgentState:
     user_id: str
     confirmed_history: List[str]
-    # State/Transaction Embedding 검색용. 채워지지 않으면(None) CohortIndex.search()가
-    # 해당 공간을 자동으로 제외하고 History만으로 검색한다(기존 동작과 동일하게 안전 폴백).
-    # TODO: backend_client에 GET /users/{id}/transactions 호출 + pipeline.state_builder /
-    #       pipeline.tx_features 조합으로 이 값을 실제로 채우는 연결은 별도 작업으로 남겨둠
-    #       (현재는 배선만 뚫어놓은 상태 — agent_loop.py가 HTTP 클라이언트라 ORM User 객체를
-    #       직접 못 받으므로, user_detail(dict)+transactions(dict) -> state/tx dict 변환기가 필요).
+    # State/Transaction Embedding 검색용. 미리 채워서 넘겨도 되고, None으로 두면
+    # on_event_confirmed()가 backend_client.fetch_user_detail()/fetch_user_transactions()로
+    # 자동으로 채운다(서버 미기동 등으로 실패하면 History만으로 안전하게 폴백).
     query_state: Optional[dict] = None
     query_tx: Optional[dict] = None
 
@@ -100,6 +97,17 @@ class CortisAgent:
         확정된 이벤트가 들어온다고 가정)
         """
         state.confirmed_history.append(new_event)
+
+        # State/Transaction Embedding 검색을 위해 필요한 값이 아직 안 채워졌으면 HTTP로 채운다.
+        # (서버 미기동 등으로 실패하면 History만으로 안전하게 폴백 — CohortIndex.search()가
+        # query_state/query_tx=None을 이미 그렇게 처리하도록 설계돼 있음)
+        if state.query_state is None or state.query_tx is None:
+            try:
+                user_detail = backend_client.fetch_user_detail(state.user_id, self.base_url)
+                txs = backend_client.fetch_user_transactions(state.user_id, self.base_url)
+                state.query_state, state.query_tx = backend_client.build_query_state_and_tx(user_detail, txs)
+            except Exception as e:
+                print(f"  [WARN] State/Transaction 조회 실패 - History만으로 검색: {e}")
 
         matches = self.index.search(
             state.confirmed_history,

@@ -107,13 +107,24 @@ class HistoryOut(BaseModel):
 
 # --------------------------------------------------------------------- 코호트
 class CohortRowOut(BaseModel):
-    """CohortIndex.load_from_mysql_rows() 가 기대하는 형태 그대로."""
+    """CohortIndex.load_from_mysql_rows() 가 기대하는 형태 그대로.
+
+    state_embedding_vector/tx_embedding_vector: History Embedding과 독립된 State/Transaction
+    임베딩 공간(pipeline/similarity.py 3분리 구조). cash_need_krw/cash_need_source/
+    event_interval_months: generate_cohorts.py가 실제 통계를 앵커로 합성한 값 —
+    None이면 해당 next_event에 "필요자금/시점" 개념이 성립하지 않는다는 뜻(취업/이직 등).
+    """
 
     cohort_id: int
     history: List[str]
     event_history_text: str
     next_event: str
     embedding_vector: List[float]
+    state_embedding_vector: List[float]
+    tx_embedding_vector: List[float]
+    cash_need_krw: Optional[int] = None
+    cash_need_source: Optional[str] = None
+    event_interval_months: Optional[int] = None
 
 
 class CohortStatsOut(BaseModel):
