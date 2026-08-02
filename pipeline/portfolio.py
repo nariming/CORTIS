@@ -63,6 +63,10 @@ class RefinanceCandidate:
     max_amount: int
     rate_type: str = "변동"  # LoanProduct.rate_type. Policy 기반 후보는 카탈로그에 이 필드가
                              # 없어 기본값 "변동"(=스트레스 가산 적용) 유지 — 모르면 보수적으로.
+    # 목적함수 4단계 명시화(2026.8)의 tie-break용. 정책형 상품인지 여부 - 동일 조건이면
+    # 정책 편익이 있는 쪽을 우선한다는 doc1의 tie-break 기준을 구현하기 위해 추가.
+    # 생성 시점(agent_loop.py의 policy_refinance_map/strategy_generator.py)에서 True로 표시.
+    is_policy: bool = False
 
     def assumed_rate(self) -> float:
         """실제 심사 전이라 확정 금리를 모르므로, 보수적으로 min_rate(최저금리)를 가정.
@@ -136,6 +140,7 @@ class PortfolioMetrics:
     npv_total_cost: float           # 조합의 총비용 NPV (이자, 원 단위)
     npv_savings_vs_keep: float      # '전부 유지' 대비 절감액 (양수 = 절감)
     dsr_stress_pct: float           # 스트레스 금리 적용 시 DSR (%, 변동금리 100% 가정)
+    policy_benefit_count: int = 0   # 목적함수 4단계 tie-break용: 조합 내 정책형 상품 사용 건수
     feasible: bool = True
     infeasible_reason: Optional[str] = None
 
@@ -263,15 +268,32 @@ def evaluate_combo(
     profile: UserFinancialProfile,
     dsr_cap_pct: float = 40.0,
 ) -> PortfolioMetrics:
-    """포트폴리오 후보 하나를 평가 (월상환액/DSR/NPV/스트레스DSR 전부 계산)."""
+    """포트폴리오 후보 하나를 평가 (월상환액/DSR/NPV/스트레스DSR 전부 계산).
+
+    목적함수 4단계 명시화(2026.8) - Hard Constraint 확장
+      기존에는 DSR 상한만 Hard Constraint였다. 그런데 build_action_candidates()가 대출
+      한 건마다 독립적으로 "PREPAY 상한 = min(liquid_assets_krw, 그 대출 잔액)"을 계산해서
+      후보를 만들다 보니, 대출이 2건 이상일 때 카테시안 곱으로 "대출 A도 조기상환 + 대출 B도
+      조기상환"이라는 조합이 만들어지면 같은 유동자산을 두 번 쓸 수 있다고 착각하는 조합이
+      생길 수 있었다(버그). 이제 조합 전체의 PREPAY 금액 합계를 별도로 검증해서, 실제
+      보유 유동자산을 넘어서면 이 조합 자체를 infeasible 처리한다 - "정책자격/DSR한도/
+      최소유동성유지"라는 3중 Hard Constraint 중 마지막 하나가 이번에 추가된 것.
+      (정책자격은 refinance_map에 A파트가 이미 자격 통과 상품만 넣어주므로 구조적으로 충족됨)
+    """
     loan_by_id = {l.loan_id: l for l in loans}
 
     monthly_total = 0
     npv_total = 0.0
+    policy_benefit_count = 0
+    total_prepay = 0
     for action in combo:
         loan = loan_by_id[action.loan_id]
         monthly_total += _new_monthly_payment(loan, action)
         npv_total += _npv_cost(loan, action)
+        if action.action == "PREPAY":
+            total_prepay += action.prepay_amount or loan.balance
+        if action.action == "REFINANCE" and action.target_product and action.target_product.is_policy:
+            policy_benefit_count += 1
 
     dsr = (monthly_total * 12 / profile.annual_income) * 100 if profile.annual_income else 0.0
 
@@ -294,8 +316,21 @@ def evaluate_combo(
             stressed_monthly += _new_monthly_payment(loan, action)
     dsr_stress = (stressed_monthly * 12 / profile.annual_income) * 100 if profile.annual_income else 0.0
 
-    feasible = dsr <= dsr_cap_pct
-    reason = None if feasible else f"DSR {dsr:.1f}%가 상한 {dsr_cap_pct}% 초과"
+    dsr_feasible = dsr <= dsr_cap_pct
+    liquidity_feasible = (
+        profile.liquid_assets_krw is None or total_prepay <= profile.liquid_assets_krw
+    )
+
+    reasons = []
+    if not dsr_feasible:
+        reasons.append(f"DSR {dsr:.1f}%가 상한 {dsr_cap_pct}% 초과")
+    if not liquidity_feasible:
+        reasons.append(
+            f"조기상환 합계 {total_prepay:,}원이 보유 유동자산 "
+            f"{profile.liquid_assets_krw:,}원 초과"
+        )
+    feasible = dsr_feasible and liquidity_feasible
+    reason = "; ".join(reasons) if reasons else None
 
     return PortfolioMetrics(
         combo=combo,
@@ -304,6 +339,7 @@ def evaluate_combo(
         npv_total_cost=round(npv_total),
         npv_savings_vs_keep=0.0,  # select_best_portfolio에서 KEEP 기준 대비로 채움
         dsr_stress_pct=round(dsr_stress, 1),
+        policy_benefit_count=policy_benefit_count,
         feasible=feasible,
         infeasible_reason=reason,
     )
@@ -331,6 +367,23 @@ def select_best_portfolio(
 ) -> tuple:
     """전체 파이프라인: 조합 생성 -> 평가 -> 제약필터 -> 우선순위 정렬.
 
+    목적함수 4단계 명시화 (2026.8, GPT 피드백 반영)
+      1단계 Hard Constraint: 정책자격(refinance_map에 A파트가 이미 자격통과 상품만 넣어줌,
+                              구조적으로 충족) + DSR 상한 + 최소유동성유지(evaluate_combo에서
+                              조기상환 합계가 유동자산을 넘지 않도록 검증)
+      2단계 Primary: 유동성 위험 분류(classify_liquidity_risk)에 따라 저위험=NPV 최소화,
+                     고위험=월상환액 최소화 - 이 분기는 이미 portfolio_summary.py의 LLM
+                     설명 프레임("고위험이면 안정 우선, 저위험이면 비용 우선")과 통합돼
+                     있어 그대로 유지한다. 새로 갈아엎지 않고 그 다음 단계를 보강하는 방식.
+      3단계 Secondary: 스트레스 DSR(dsr_stress_pct, worst-case 근사) - Primary가 동점이거나
+                       비슷할 때, 금리가 오르는 최악의 상황에서도 더 안전한 조합을 우선한다.
+                       (기존에는 dsr_stress_pct가 계산만 되고 정렬 기준엔 안 들어가 있었음)
+      4단계 Tie-break: policy_benefit_count(정책형 상품 활용 건수) - 그래도 동점이면 정책
+                       혜택을 더 많이 활용하는 조합을 우선한다.
+      "실행 시점" tie-break은 이번 범위에서는 제외했다 - 시점 관련 계산(대환 시점 재조정 등)은
+      compute_event_based_timeline() 등 별도 로직이 이미 담당하고 있어, 이 함수(포트폴리오
+      "무엇을 선택할지")에 억지로 합치기보다 별도 스코프로 남겨두는 것이 맞다고 판단.
+
     반환: (선택된 1위 PortfolioMetrics, 비교용 2위 PortfolioMetrics | None, 탈락 사유 리스트)
     """
     combos = generate_portfolio_combinations(loans, refinance_map, profile.liquid_assets_krw)
@@ -346,9 +399,13 @@ def select_best_portfolio(
 
     risk = classify_liquidity_risk(profile)
     if risk == "고위험":
-        feasible.sort(key=lambda m: (m.monthly_payment_total, m.npv_total_cost))
+        feasible.sort(
+            key=lambda m: (m.monthly_payment_total, m.dsr_stress_pct, m.npv_total_cost, -m.policy_benefit_count)
+        )
     else:
-        feasible.sort(key=lambda m: (m.npv_total_cost, m.monthly_payment_total))
+        feasible.sort(
+            key=lambda m: (m.npv_total_cost, m.dsr_stress_pct, m.monthly_payment_total, -m.policy_benefit_count)
+        )
 
     if not feasible:
         return None, None, [m.infeasible_reason for m in infeasible]

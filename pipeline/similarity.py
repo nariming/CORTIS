@@ -12,13 +12,24 @@ History/State/Transaction 3분리 임베딩 (2026.8 확장)
   - 이를 해결하기 위해 History/State/Transaction을 하나로 합치지 않고 3개의 독립된
     임베딩 공간으로 분리했다. 합치지 않는 이유: State만 강조하면 이 서비스의 원래
     차별점("이벤트 순서에 따른 조건부 추론")이 희석될 수 있기 때문이다.
-  - 세 공간의 유사도는 가중합으로 결합한다. 가중치는 새 하이퍼파라미터를 만들지 않고
-    기존 COLD_START_THRESHOLD를 그대로 재사용한다 — 확정 히스토리가 짧을 때
-    (콜드스타트) State/Transaction 신호에 더 의존해야 한다는 것은 이미 있던 콜드스타트
-    개념과 정확히 같은 맥락이라는 판단.
+  - 세 공간의 유사도는 가중합으로 결합한다.
+
+가중치 3단계 확장 (2026.8, GPT 피드백 반영)
+  - 기존에는 len(history) 하나만 보고 이분법(콜드스타트 여부)으로 가중치를 정했다.
+    문제: 히스토리가 충분히 쌓였어도(콜드스타트 아님) "이 특정 이벤트 순서 패턴" 자체가
+    코호트 300개 안에 흔치 않으면, History 유사도 상위 결과들이 실제로는 다 고만고만하게
+    낮은 값일 수 있다 — 이 경우 History 검색 결과를 그대로 신뢰하면 안 되고 State/Tx에
+    더 의존해야 한다는 게 이번 확장의 문제의식.
+  - "얼마나 신뢰할 만한 검색인가"를 판단하는 도구로 새 걸 만들지 않고, reasoning.py의
+    compute_confidence()가 이미 쓰는 엔트로피 기반 집중도 측정을 그대로 재사용한다.
+    History 공간 top-k 유사도 분포의 normalized_entropy가 높으면(=고르게 퍼짐=집중 안 됨)
+    reasoning.py가 "low confidence"로 판단하는 것과 동일한 기준(0.85)을 여기서도 그대로
+    적용해 History 비중을 낮춘다 — 새 임계값을 만들지 않고 기존 개념을 재사용하는 편이
+    "왜 이 값이냐"는 질문에 방어하기 쉽다는 것은 콜드스타트 이분법 때와 같은 논리다.
 """
 
 import os
+import math
 from dataclasses import dataclass, field
 from typing import List, Optional
 import numpy as np
@@ -38,10 +49,66 @@ COLD_START_THRESHOLD = int(os.environ.get("COLD_START_THRESHOLD", "2"))
 # "기존 콜드스타트 기준을 검색 가중치에도 그대로 적용했다"고 답할 수 있어 방어가 더 쉽다.
 WEIGHTS_COLD_START = {"history": 0.2, "state": 0.6, "tx": 0.2}
 WEIGHTS_NORMAL = {"history": 0.6, "state": 0.25, "tx": 0.15}
+# 콜드스타트는 아니지만(히스토리는 쌓임) History 검색 자체의 신뢰도가 낮을 때(아래
+# _history_search_normalized_entropy 참고) 쓰는 중간 단계 - History 비중은 낮추되
+# WEIGHTS_COLD_START만큼 극단적으로 낮추지는 않는다(히스토리가 아예 없는 것과는 다른
+# 상황이므로).
+WEIGHTS_LOW_HISTORY_QUALITY = {"history": 0.35, "state": 0.45, "tx": 0.20}
+
+# reasoning.py의 compute_confidence()가 "low confidence" 판단에 쓰는 임계값과 동일한 값을
+# 그대로 재사용 - 새 매직넘버를 만들지 않기 위함. "분포가 고르게 퍼져 특정 후보로 확신하기
+# 어렵다"는 같은 개념을 이벤트 분포(reasoning.py)와 History 검색 결과 분포(여기)에
+# 일관되게 적용한다.
+HISTORY_LOW_QUALITY_ENTROPY_THRESHOLD = 0.85
 
 
-def _adaptive_weights(history_len: int, cold_start_threshold: int = COLD_START_THRESHOLD) -> dict:
-    return WEIGHTS_COLD_START if history_len < cold_start_threshold else WEIGHTS_NORMAL
+def _adaptive_weights(
+    history_len: int,
+    history_normalized_entropy: Optional[float] = None,
+    cold_start_threshold: int = COLD_START_THRESHOLD,
+) -> dict:
+    """3단계 가중치 결정.
+
+    1) history_len < cold_start_threshold → WEIGHTS_COLD_START (기존과 동일, 최우선 판단)
+    2) 콜드스타트가 아니어도 History 검색 자체가 특정 코호트에 집중되지 못하고 고르게
+       퍼져있으면(normalized_entropy가 임계값 초과) → WEIGHTS_LOW_HISTORY_QUALITY
+    3) 그 외(히스토리도 쌓였고, History 검색도 특정 후보에 집중됨) → WEIGHTS_NORMAL
+    """
+    if history_len < cold_start_threshold:
+        return dict(WEIGHTS_COLD_START)
+    if (
+        history_normalized_entropy is not None
+        and history_normalized_entropy > HISTORY_LOW_QUALITY_ENTROPY_THRESHOLD
+    ):
+        return dict(WEIGHTS_LOW_HISTORY_QUALITY)
+    return dict(WEIGHTS_NORMAL)
+
+
+def _history_search_normalized_entropy(sim_history: np.ndarray, top_k: int) -> float:
+    """History 공간에서 검색된 상위 top_k 유사도 분포의 normalized entropy.
+
+    reasoning.py의 compute_confidence()와 동일한 계산 방식(엔트로피/최대엔트로피)을
+    이벤트 분포 대신 유사도 분포에 적용한 것 - 1에 가까울수록 상위 후보들의 유사도가
+    고만고만하게 퍼져있어(=이 히스토리 패턴과 뚜렷하게 일치하는 코호트가 없음) History
+    신호를 신뢰하기 어렵다는 뜻이고, 0에 가까울수록 소수 코호트에 유사도가 집중돼
+    History 신호가 강하다는 뜻이다.
+
+    코사인 유사도는 음수일 수 있어(방향이 반대인 벡터), 엔트로피 계산 전 아주 작은
+    양수로 클리핑한다 - 이 경우 그 코호트는 사실상 "거의 안 비슷하다"는 뜻이라 확률
+    질량을 거의 배정 안 하는 것이 실제로도 맞는 처리다.
+    """
+    if len(sim_history) == 0:
+        return 0.0
+    k = min(top_k, len(sim_history))
+    top_vals = np.sort(sim_history)[-k:]
+    top_vals = np.clip(top_vals, a_min=1e-9, a_max=None)
+    total = top_vals.sum()
+    if total <= 0:
+        return 1.0  # 전부 0에 가까움 = 완전히 고르게 퍼진 것과 동일하게 취급
+    probs = top_vals / total
+    entropy = -float(np.sum(probs * np.log(probs)))
+    max_entropy = math.log(len(probs)) if len(probs) > 1 else 1.0
+    return entropy / max_entropy if max_entropy > 0 else 0.0
 
 
 @dataclass
@@ -146,12 +213,21 @@ class CohortIndex:
         query_state/query_tx가 없으면(예: 아직 State Builder 연결 전 호출부) 해당 공간은
         검색에서 제외하고 남은 공간끼리 가중치를 재분배한다 — 값이 없다고 0점 처리하면
         "그 유저는 상태가 전혀 안 맞는 사람"으로 취급하는 셈이 되어 왜곡이 생기기 때문이다.
+
+        가중치 결정 순서 (2026.8 확장): sim_history를 먼저 계산해 그 분포의 엔트로피를
+        구한 다음 _adaptive_weights()에 넘긴다 - "검색해보기 전에는 이 검색이 얼마나
+        신뢰할 만한지 알 수 없다"는 게 이번 확장의 핵심이라, history_len만으로 미리
+        가중치를 정하던 이전 방식과 달리 sim_history 계산 이후로 가중치 결정을 미룬다.
         """
         if self._history_vectors is None or len(self._history_vectors) == 0:
             return []
 
-        weights = dict(_adaptive_weights(len(query_history)))
         sim_history = self._history_vectors @ self._embed_query(history_to_sentence(query_history))
+
+        history_entropy = _history_search_normalized_entropy(sim_history, top_k)
+        weights = dict(
+            _adaptive_weights(len(query_history), history_normalized_entropy=history_entropy)
+        )
 
         if query_state is not None and self._state_vectors is not None:
             sim_state = self._state_vectors @ self._embed_query(state_dict_to_sentence(query_state))

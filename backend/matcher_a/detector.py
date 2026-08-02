@@ -8,7 +8,7 @@ C엔진(예측)의 입력은 "확정된 이벤트 히스토리"인데, 그 히�
   - 감지는 일부러 규칙기반이다. "무엇을 근거로 취업이라 판단했는지"를 tx_id 단위로 남겨야
     사용자에게 확인 질문("○○에서 급여성 입금이 시작됐어요. 취업하셨나요?")을 던질 수 있기 때문.
   - 따라서 각 감지기는 event_type 뿐 아니라 evidence(근거 거래 id)와 confidence를 함께 돌려준다.
-  - 애매한 건 여기서 확정하지 않는다. 확정 권한은 사용자에게 있다(life_events.status).
+  - 모호한 판단은 여기서 확정하지 않는다. 확정 권한은 사용자에게 있다(life_events.status).
 """
 
 from collections import defaultdict

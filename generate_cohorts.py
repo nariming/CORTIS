@@ -263,16 +263,23 @@ def _sample_loan_portfolio(history, housing_type):
     return loans
 
 
-def _sample_tx_features(next_event, employment_type):
+def _sample_tx_features(next_event, employment_type, has_loan):
     """tx_features.py가 실제 유저 거래내역에서 계산하는 것과 같은 필드를 합성한다.
 
     소득 추세는 안정적 소득 자체가 없는 경우(학생/무직) None으로 둔다 —
     tx_features.py가 데이터 부족 시 None을 반환하는 것과 동일한 원칙.
+
+    debt_growth도 같은 원칙: 대출 자체가 없으면 "대출상환" 거래 자체가 없어
+    tx_features.py에서도 growth가 None으로 나오므로(_recent_prior_avg가 두 구간
+    모두 비어 (None, None) 반환), has_loan=False면 여기서도 None으로 둔다.
     """
     income_growth = None if employment_type in ("학생", "무직") else round(random.gauss(0.01, 0.05), 3)
     expense_growth = round(random.gauss(0.0, 0.08), 3)
     saving_mean, saving_std = SAVING_GROWTH_BIAS.get(next_event, DEFAULT_SAVING_GROWTH)
     saving_growth = round(random.gauss(saving_mean, saving_std), 3)
+    # 기존 대출이 있으면 상환액은 보통 일정하되(고정 원리금), 신규 대출 추가 실행이나
+    # 변동금리 재산정 등으로 약간씩 늘어나는 방향의 완만한 편향을 준다.
+    debt_growth = round(random.gauss(0.02, 0.06), 3) if has_loan else None
     cashflow_volatility = round(abs(random.gauss(0.15, 0.1)), 3)
 
     signals = []
@@ -283,6 +290,7 @@ def _sample_tx_features(next_event, employment_type):
         "income_growth": income_growth,
         "expense_growth": expense_growth,
         "saving_growth": saving_growth,
+        "debt_growth": debt_growth,
         "cashflow_volatility": cashflow_volatility,
         "signals": signals,
     }
@@ -332,7 +340,7 @@ def attach_synthetic_state(seq: dict) -> dict:
     # (pipeline/state_builder.py의 _current_dsr_pct()와 동일한 원칙).
     dsr_pct = round(monthly_payment_total * 12 / annual_income * 100, 1) if loans and annual_income > 0 else None
 
-    tx_features = _sample_tx_features(next_event, employment_type)
+    tx_features = _sample_tx_features(next_event, employment_type, has_loan=bool(loans))
     event_interval_months = round(_sample_interval_months(history[-1], next_event))
     cash_need_krw, cash_need_source = _sample_cash_need(next_event)
 

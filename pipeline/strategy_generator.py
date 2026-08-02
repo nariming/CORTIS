@@ -1,7 +1,7 @@
 """
 Strategy Generator — "기존 대출이 없는데 새로 자금이 필요한 상황"의 후보 전략 생성.
 
-문제의식 (GPT 피드백 + 실제 코드 확인 결과)
+문제의식 (설계 검토 및 실제 코드 확인 결과)
   agent_loop.py의 _run_portfolio_decision()은 지금 이렇게 시작한다:
 
       loans = backend_client.build_existing_loans_from_user_detail(user_detail)

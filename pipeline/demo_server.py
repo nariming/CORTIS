@@ -1,7 +1,7 @@
 """
 데모 웹 화면 전용 경량 서버 (포트 8001).
 
-재령이의 backend(포트 8000)는 건드리지 않고, "이벤트 확정 -> 검색 -> LLM추론 ->
+Backend(포트 8000)는 건드리지 않고, "이벤트 확정 -> 검색 -> LLM추론 ->
 예측저장 -> 정책매칭"을 한 번의 호출로 묶어서 브라우저에 노출하기 위한 서버.
 
 demo_full_flow.py 의 로직을 그대로 함수화해서 재사용한다.
@@ -50,7 +50,7 @@ class PredictRequest(BaseModel):
 
 @app.get("/demo/latest-prediction/{user_id}")
 def demo_latest_prediction(user_id: str):
-    """재령이 백엔드의 예측 이력(GET /users/{id}/predictions)에서 가장 최근 것만 반환.
+    """백엔드의 예측 이력(GET /users/{id}/predictions)에서 가장 최근 것만 반환.
 
     새로고침해도 마지막 예측 결과를 다시 보여주기 위한 용도.
     """
@@ -71,7 +71,7 @@ def demo_latest_prediction(user_id: str):
 
 @app.get("/demo/users")
 def demo_users():
-    """재령이 백엔드의 유저 목록을 그대로 중계."""
+    """백엔드의 유저 목록을 그대로 중계."""
     import requests
     resp = requests.get(f"{bc.BACKEND_BASE_URL}/users", timeout=10)
     resp.raise_for_status()
@@ -80,7 +80,7 @@ def demo_users():
 
 @app.get("/demo/history/{user_id}")
 def demo_history(user_id: str):
-    """재령이 백엔드의 히스토리 조회를 그대로 중계."""
+    """백엔드의 히스토리 조회를 그대로 중계."""
     try:
         return bc.get_user_history(user_id)
     except Exception as e:
@@ -89,7 +89,7 @@ def demo_history(user_id: str):
 
 @app.get("/demo/detect/{user_id}")
 def demo_detect(user_id: str):
-    """재령이 백엔드의 규칙기반 감지(POST /users/{id}/detect)를 그대로 중계.
+    """백엔드의 규칙기반 감지(POST /users/{id}/detect)를 그대로 중계.
 
     거래내역을 스캔해서 나온 이벤트 후보(확인 질문 문구 포함)를 그대로 돌려준다.
     """
@@ -103,7 +103,7 @@ def demo_detect(user_id: str):
 
 @app.post("/demo/confirm/{event_id}")
 def demo_confirm(event_id: int):
-    """재령이 백엔드의 이벤트 확정(POST /events/{id}/confirm)을 그대로 중계.
+    """백엔드의 이벤트 확정(POST /events/{id}/confirm)을 그대로 중계.
 
     이 호출이 곧 agentic 순환의 트리거 — 확정 직후 프런트가 /demo/predict 를 이어서 부른다.
     """

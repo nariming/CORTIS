@@ -1,5 +1,5 @@
 """
-C파트가 재령이 백엔드(A파트/predictions 저장소)와 실제로 주고받는 요청 형식.
+C파트가 백엔드(A파트/predictions 저장소)와 실제로 주고받는 요청 형식.
 
 실제 Swagger 스펙(/docs)에서 확인한 필드명 그대로 맞춤:
   POST /users/{user_id}/events        -> event_id 반환

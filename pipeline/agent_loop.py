@@ -50,6 +50,13 @@ class PortfolioDecisionResult:
     dsr_after: float
     npv_savings: int
     validated: bool                    # 검증가드 통과 여부
+    feasibility_warning: Optional[str] = None  # ⑦ Critic-Portfolio 연결(2026.8): 실행 가능한
+    # 조합이 하나도 없을 때(select_best_portfolio/select_best_new_loan_strategy가 best=None을
+    # 반환) 이전에는 백엔드 콘솔에만 [WARN]을 찍고 유저에게는 아무것도 전달하지 않았다.
+    # "예측된 이벤트가 실제로는 지금 재정 상태로 감당이 어렵다"는 것도 이 서비스가 줘야 할
+    # 정직한 정보라, summary=None으로 두는 대신 이 필드에 이유를 담아 콜백까지 전달한다.
+    # (완전한 LLM 재귀 재검토 루프는 비용/복잡도상 이번 범위에서는 제외 - summary 자체는
+    # 비워두고 사유만 구조적으로 전달하는 선에서 마무리)
 
 
 class CortisAgent:
@@ -90,22 +97,39 @@ class CortisAgent:
             print(f"  [AGENT] {s.label}: {s.path_str()} (결합확률 {s.joint_probability_pct}%)")
 
     def _default_portfolio_stub_callback(self, user_id: str, result: PortfolioDecisionResult):
+        if result.feasibility_warning:
+            print(f"  [AGENT] 포트폴리오 실행 불가 (user={user_id}): {result.feasibility_warning}")
+            return
         print(f"  [AGENT] 포트폴리오 결정 완료 (user={user_id}, 검증통과={result.validated})")
         print(f"  [AGENT] {result.summary}")
         print(f"  [AGENT] 감시조건: {result.watch_conditions}")
 
-    def on_event_confirmed(self, state: AgentState, new_event: str, user_context: Optional[str] = None) -> PredictionResult:
+    def on_event_confirmed(
+        self,
+        state: AgentState,
+        new_event: str,
+        user_context: Optional[str] = None,
+        offline_mode: bool = False,
+    ) -> PredictionResult:
         """이벤트가 규칙기반 감지+확인질문을 거쳐 '확정'되었을 때 호출되는 진입점.
 
         (규칙기반 감지 자체는 A파트 모듈의 detect_* 함수들이 담당 — 여기선 이미
         확정된 이벤트가 들어온다고 가정)
+
+        offline_mode=True: demo_ab_contrast.py처럼 실제 DB에 없는 표시용 user_id
+        ("김하늘(페르소나)" 등)로 History/State 임베딩 로직만 오프라인으로 확인할 때 쓴다.
+        State/Transaction HTTP 조회와 포트폴리오 결정 단계 모두 처음부터 시도하지 않는다 -
+        실제 DB 유저가 아니므로 시도해봤자 404가 날 게 뻔한데, 그걸 매번 try/except로
+        받아서 [WARN] 두 줄을 찍는 것보다 애초에 "오프라인 모드"라고 한 줄로 명시하는 게
+        결과를 읽는 사람 입장에서 더 명확하다(에러가 난 게 아니라 이 모드에서는 원래
+        스킵하도록 설계된 것임을 구분해줌).
         """
         state.confirmed_history.append(new_event)
 
         # State/Transaction Embedding 검색을 위해 필요한 값이 아직 안 채워졌으면 HTTP로 채운다.
         # (서버 미기동 등으로 실패하면 History만으로 안전하게 폴백 — CohortIndex.search()가
         # query_state/query_tx=None을 이미 그렇게 처리하도록 설계돼 있음)
-        if state.query_state is None or state.query_tx is None:
+        if not offline_mode and (state.query_state is None or state.query_tx is None):
             try:
                 user_detail = backend_client.fetch_user_detail(state.user_id, self.base_url)
                 txs = backend_client.fetch_user_transactions(state.user_id, self.base_url)
@@ -139,12 +163,15 @@ class CortisAgent:
 
         self.on_predict_callback(state.user_id, result, state.confirmed_history)
 
-        # [신규] 예측이 나온 즉시 포트폴리오 결정 레이어까지 이어서 실행
-        # (실제 서버 필요 - 서버 없이 테스트하려면 이 호출 부분만 주석 처리하고 사용)
-        try:
-            self._run_portfolio_decision(state, new_event, result, event_confirmed=True)
-        except Exception as e:
-            print(f"  [WARN] 포트폴리오 결정 단계 스킵 (서버 미기동 등): {e}")
+        if offline_mode:
+            print(f"  [AGENT] 오프라인 모드 - 포트폴리오 결정 단계 스킵 (실제 DB 유저 아님)")
+        else:
+            # [신규] 예측이 나온 즉시 포트폴리오 결정 레이어까지 이어서 실행
+            # (실제 서버 필요 - 서버 없이 테스트하려면 offline_mode=True로 호출)
+            try:
+                self._run_portfolio_decision(state, new_event, result, event_confirmed=True)
+            except Exception as e:
+                print(f"  [WARN] 포트폴리오 결정 단계 스킵 (서버 미기동 등): {e}")
 
         return result
 
@@ -204,6 +231,11 @@ class CortisAgent:
             policy_refinance_map = backend_client.build_refinance_map_from_policy_match(
                 loans, policy_match_response, policy_catalog,
             )
+            # 목적함수 4단계 tie-break(policy_benefit_count)용 - 이 맵에 담긴 후보는 전부
+            # 정책형 상품이므로 여기서 일괄 표시한다.
+            for candidates in policy_refinance_map.values():
+                for c in candidates:
+                    c.is_policy = True
         except Exception as e:
             print(f"  [WARN] 정책형 대출 후보 조회 실패 (KB 자체상품만으로 진행): {e}")
             policy_refinance_map = {}
@@ -213,6 +245,20 @@ class CortisAgent:
         best, second, infeasible = select_best_portfolio(loans, refinance_map, profile)
         if best is None:
             print(f"  [WARN] 실행가능한 포트폴리오 없음: {infeasible}")
+            # ⑦ Critic-Portfolio 연결: 콘솔 경고로만 끝내지 않고, "이 이벤트를 감당할 수
+            # 있는 포트폴리오 조합이 하나도 없다"는 사실 자체를 유저가 볼 결과로 전달한다.
+            reason_text = "; ".join(r for r in infeasible if r) or "제약조건(DSR/유동성)을 만족하는 조합 없음"
+            self.on_portfolio_callback(
+                state.user_id,
+                PortfolioDecisionResult(
+                    summary={}, watch_conditions=[], dsr_before=0.0, dsr_after=0.0,
+                    npv_savings=0, validated=True,
+                    feasibility_warning=(
+                        f"'{event_name}' 관련 대출 조정을 시도했으나 실행 가능한 조합이 없습니다 "
+                        f"({reason_text}). 현재 재정 상태 기준으로는 재검토가 필요합니다."
+                    ),
+                ),
+            )
             return
 
         dsr_before = round((sum(l.monthly_payment for l in loans) * 12 / profile.annual_income) * 100, 1)
@@ -306,6 +352,7 @@ class CortisAgent:
                         max_amount=cash_need,  # 기존 대출이 없어 balance로 근사 불가 -
                                                 # cash_need를 상한으로 대체 사용(보수적 근사)
                         rate_type=catalog_entry.get("rate_type", "변동"),
+                        is_policy=True,  # 목적함수 4단계 tie-break(policy_benefit_count)용
                     ))
         except Exception as e:
             print(f"  [WARN] 정책형 신규대출 후보 조회 실패: {e}")
@@ -345,6 +392,18 @@ class CortisAgent:
         best, second, infeasible = select_best_new_loan_strategy(candidates, profile)
         if best is None:
             print(f"  [WARN] '{event_name}' 실행가능한 신규대출 전략 없음: {infeasible}")
+            reason_text = "; ".join(r for r in infeasible if r) or "제약조건(DSR)을 만족하는 조달 방법 없음"
+            self.on_portfolio_callback(
+                state.user_id,
+                PortfolioDecisionResult(
+                    summary={}, watch_conditions=[], dsr_before=0.0, dsr_after=0.0,
+                    npv_savings=0, validated=True,
+                    feasibility_warning=(
+                        f"'{event_name}' 대비 자금조달 방법을 찾았으나 실행 가능한 안이 없습니다 "
+                        f"({reason_text}). 현재 재정 상태 기준으로는 재검토가 필요합니다."
+                    ),
+                ),
+            )
             return
 
         summary_input = build_new_loan_summary_input(
