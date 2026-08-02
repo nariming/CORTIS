@@ -195,17 +195,44 @@ class CohortIndex:
     def aggregate_next_events(self, matches: List[CohortMatch]) -> dict:
         """검색된 top-k 중 다음 이벤트 분포 집계.
 
-        반환: {event: {"count": int, "weighted_score": float}}
+        반환: {event: {"count", "weighted_score", "probability_pct",
+                        "avg_cash_need_krw", "cash_need_source", "avg_event_interval_months"}}
+
         count만으로는 유사도 0.95인 사례 3건과 0.3인 사례 3건을 구분 못 한다. weighted_score는
-        해당 이벤트로 매칭된 코호트들의 유사도 합이라, "몇 건인데 유사도는 이 정도"라는 근거를
-        함께 제시할 수 있다. 정렬 기준도 count가 아니라 weighted_score로 바꿨다 — 이 집계의
-        원래 취지(유사도가 높은 근거를 우선한다)에 더 맞기 때문이다.
+        해당 이벤트로 매칭된 코호트들의 유사도 합이고, probability_pct는 그걸 전체 합 대비
+        비율로 정규화한 값이다 — "이 이벤트가 확률 68%다"라는 말을 LLM이 지어내는 게 아니라
+        검색된 근거의 비중을 코드가 그대로 계산한 것이라는 점이 방어 포인트다.
+
+        avg_cash_need_krw/avg_event_interval_months도 마찬가지로 매칭된 코호트들의
+        cash_need_krw/event_interval_months 값(둘 다 generate_cohorts.py가 통계 앵커 기반으로
+        합성한 값, None 제외 평균) 그대로 집계한 것이지 LLM이 만든 숫자가 아니다.
         """
         agg: dict = {}
         for m in matches:
-            entry = agg.setdefault(m.next_event, {"count": 0, "weighted_score": 0.0})
+            entry = agg.setdefault(
+                m.next_event,
+                {"count": 0, "weighted_score": 0.0, "_cash_needs": [], "_intervals": [], "_cash_source": None},
+            )
             entry["count"] += 1
             entry["weighted_score"] += m.similarity
+            if m.cash_need_krw is not None:
+                entry["_cash_needs"].append(m.cash_need_krw)
+                entry["_cash_source"] = entry["_cash_source"] or m.cash_need_source
+            if m.event_interval_months is not None:
+                entry["_intervals"].append(m.event_interval_months)
+
+        total_weighted = sum(e["weighted_score"] for e in agg.values()) or 1.0
         for entry in agg.values():
             entry["weighted_score"] = round(entry["weighted_score"], 4)
+            entry["probability_pct"] = round(entry["weighted_score"] / total_weighted * 100, 1)
+            entry["avg_cash_need_krw"] = (
+                round(sum(entry["_cash_needs"]) / len(entry["_cash_needs"])) if entry["_cash_needs"] else None
+            )
+            entry["cash_need_source"] = entry.pop("_cash_source")
+            entry["avg_event_interval_months"] = (
+                round(sum(entry["_intervals"]) / len(entry["_intervals"]), 1) if entry["_intervals"] else None
+            )
+            del entry["_cash_needs"]
+            del entry["_intervals"]
+
         return dict(sorted(agg.items(), key=lambda kv: -kv[1]["weighted_score"]))

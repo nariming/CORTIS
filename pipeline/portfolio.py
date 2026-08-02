@@ -371,6 +371,9 @@ class EligibilityTimelineEntry:
     change_type: Literal["자격상실 예정", "신규자격 예상"]
     basis: str            # 근거 (연령상한 / 예측이벤트 등)
     certainty: Literal["확정", "추정"]  # 나이 기반은 확정, 이벤트 예측 기반은 추정
+    expected_timing_months: Optional[float] = None
+    expected_cash_need_krw: Optional[int] = None
+    cash_need_source: Optional[str] = None
 
 
 def compute_age_based_timeline(birth_year: int, product_name: str, age_cap: int = YOUTH_AGE_CAP) -> Optional[EligibilityTimelineEntry]:
@@ -388,19 +391,38 @@ def compute_age_based_timeline(birth_year: int, product_name: str, age_cap: int 
     )
 
 
-def compute_event_based_timeline(predicted_event: str, evidence_count: int,
-                                   policy_or_product_name: str) -> EligibilityTimelineEntry:
+def compute_event_based_timeline(
+    predicted_event: str,
+    evidence_count: int,
+    policy_or_product_name: str,
+    expected_timing_months: Optional[float] = None,
+    expected_cash_need_krw: Optional[int] = None,
+    cash_need_source: Optional[str] = None,
+) -> EligibilityTimelineEntry:
     """이벤트 예측 기반 자격변화는 '추정'으로만 표기 (확정 아님 - 반드시 사용자 확인 필요).
 
-    NOTE: 현재 C엔진(reasoning.py)의 PredictionResult는 '언제'에 대한 구체적 시점을
-    반환하지 않는다 (evidence_count 기반 confidence만 있음). 그래서 여기서도 정확한
-    날짜를 만들어내지 않고 '확정 시' 조건부로만 표기한다 - 근거 없는 날짜를 지어내는 것을 방지.
+    2026.8 확장: reasoning.py의 PredictionResult가 이제 expected_timing_months/
+    expected_cash_need_krw를 코호트 집계값으로 제공한다(이전에는 evidence_count만 있어
+    "확정 시" 조건부로만 표기했던 걸 이 근거로 구체화). 값이 없으면(집계 자체가 코호트
+    부족 등으로 None인 경우) 기존처럼 "확정 시" 조건부 표기로 자연스럽게 폴백한다 —
+    없는 값을 여기서 새로 만들어내지 않는다.
     """
+    if expected_timing_months is not None:
+        basis = (
+            f"'{predicted_event}' 이벤트 예측 (유사 코호트 {evidence_count}건 근거, "
+            f"예상 약 {expected_timing_months:.0f}개월 후) 확정 시 자격 발생"
+        )
+    else:
+        basis = f"'{predicted_event}' 이벤트 예측 (유사 코호트 {evidence_count}건 근거) 확정 시 자격 발생"
+
     return EligibilityTimelineEntry(
         product_or_policy_name=policy_or_product_name,
         change_type="신규자격 예상",
-        basis=f"'{predicted_event}' 이벤트 예측 (유사 코호트 {evidence_count}건 근거) 확정 시 자격 발생",
+        basis=basis,
         certainty="추정",
+        expected_timing_months=expected_timing_months,
+        expected_cash_need_krw=expected_cash_need_krw,
+        cash_need_source=cash_need_source,
     )
 
 
@@ -413,10 +435,15 @@ def build_watch_conditions(
     event_name: str,
     event_confirmed: bool,
     dsr_cap_pct: float = 40.0,
+    predicted_next_event: Optional[EligibilityTimelineEntry] = None,
 ) -> List[str]:
     """추천 실행 후에도 '한 번 추천하고 끝'이 아니라, 상황이 바뀌면 재계산해야 하는
     조건들을 명시적으로 반환한다. agent_loop.py의 콜백이 이 조건들을 등록해두었다가,
     조건 충족 시 select_best_portfolio()를 재호출하는 식으로 쓰면 된다.
+
+    predicted_next_event: 이번에 확정된 이벤트 다음으로 예측되는 이벤트(compute_event_based_timeline()
+    결과). 넘기면 "예상 필요자금을 언제까지 준비해야 하는지"까지 감시조건에 포함한다 —
+    이게 구조화된 예측 결과(시점/필요자금)를 포트폴리오 레이어가 실제로 활용하는 지점이다.
     """
     conditions = []
     if not event_confirmed:
@@ -428,5 +455,16 @@ def build_watch_conditions(
                 f"스트레스 DSR({best.dsr_stress_pct}%)이 상한({dsr_cap_pct}%)에 근접(여유 {margin:.1f}%p) "
                 f"- 금리 추가 상승 시 재검토 필요"
             )
+    if predicted_next_event is not None and predicted_next_event.expected_cash_need_krw is not None:
+        timing_str = (
+            f"약 {predicted_next_event.expected_timing_months:.0f}개월 후"
+            if predicted_next_event.expected_timing_months is not None
+            else "시점 미상"
+        )
+        conditions.append(
+            f"다음 예상 이벤트 '{predicted_next_event.product_or_policy_name}' 대비 "
+            f"{timing_str}까지 약 {predicted_next_event.expected_cash_need_krw:,}원 준비 필요 "
+            f"({predicted_next_event.cash_need_source or '근거 미상'}, 추정치이므로 확정 시 재확인 필요)"
+        )
     conditions.append("다음 생애주기 이벤트가 새로 확정될 때마다 포트폴리오 재계산")
     return conditions
