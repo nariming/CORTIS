@@ -187,8 +187,8 @@ python demo_ab_contrast.py     # 히스토리만 다른 두 유저가 다르게 
 
 | 이름 | 역할 | 담당 영역 |
 |---|---|---|
-| 박나림 | AI/ML 파이프라인 (Developer 2) | Transaction/State 임베딩, 유사도 검색 로직, LLM 추론·Critic·Scenario Tree·Strategy Generator·Portfolio Optimizer, Agentic 순환 로직 |
 | 황재령 | 데이터/백엔드 (Developer 1) | MySQL 스키마 설계, 합성 코호트 생성 기반 마련, FastAPI 서버, A파트(정책/대출 매칭) 로직, 온통청년 API 연동 |
+| 박나림 | AI/ML 파이프라인 (Developer 2) | Transaction/State 임베딩, 유사도 검색 로직, LLM 추론·Critic·Scenario Tree·Strategy Generator·Portfolio Optimizer, Agentic 순환 로직 |
 | 이채은 | 기획/자료 | 문제 정의, 시장 조사, 기술설명서(PPT) |
 
 ---
