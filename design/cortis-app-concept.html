@@ -10,8 +10,7 @@
     --bad:#D6483F;  --bad-soft:#FBE7E5;
     --shadow:0 18px 40px -22px rgba(20,21,28,.35);
 
-    /* 앱 화면(폰 목업) 전용 고정 팔레트 — 뷰어 다크모드와 무관하게 항상 동일하게 보여준다.
-        */
+    /* 앱 화면(폰 목업) 전용 고정 팔레트 — 뷰어 다크모드와 무관하게 항상 동일하게 보여준다. */
     --app-bg:#FFFFFF; --app-card:#FBF8F1; --app-card-2:#F3EEDF;
     --app-ink:#14151C; --app-ink-soft:#65697C;
     --app-line:#E9E3D3;
@@ -51,7 +50,7 @@
     background:var(--paper-2); border:1px solid var(--line); border-radius:999px; padding:6px 14px;
   }
   h1{font-size:clamp(28px,4vw,42px); font-weight:800; letter-spacing:-.02em; margin:18px 0 10px; text-wrap:balance;}
-  .lede{font-size:16.5px; color:var(--ink-soft); max-width:640px; margin:0 0 8px;}
+  .lede{font-size:16.5px; color:var(--ink-soft); max-width:660px; margin:0 0 8px;}
 
   /* ---------- 디자인 시스템 바 ---------- */
   .sysbar{
@@ -93,12 +92,12 @@
     display:grid; gap:24px;
   }
   .contrast-top h2{color:#fff; font-size:23px; margin:0 0 6px;}
-  .contrast-top p{color:#C9CCE0; font-size:13.5px; margin:0; max-width:520px;}
+  .contrast-top p{color:#C9CCE0; font-size:13.5px; margin:0; max-width:560px;}
   .contrast-grid{display:grid; grid-template-columns:1fr auto 1fr; gap:22px; align-items:stretch;}
   .vs{align-self:center; color:#C9CCE0; font-weight:800; font-size:13px; letter-spacing:.1em;}
   .userpane{
     background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.14); border-radius:20px; padding:22px;
-    display:flex; flex-direction:column; gap:14px;
+    display:flex; flex-direction:column; gap:13px;
   }
   .userpane .who{display:flex; align-items:center; gap:10px;}
   .avatar{width:34px; height:34px; border-radius:10px; background:var(--gold); flex:none;}
@@ -107,9 +106,15 @@
   .history{display:flex; flex-wrap:wrap; gap:6px;}
   .hchip{font-size:11.5px; padding:5px 10px; border-radius:999px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.14);}
   .predict-line{font-size:12px; color:#C9CCE0; letter-spacing:.03em; text-transform:uppercase; margin-top:2px;}
-  .predict-result{font-size:19px; font-weight:800;}
-  .evidence{font-size:12.5px; color:#C9CCE0;}
-  .evidence b{color:var(--gold);}
+  .confpill{
+    display:inline-flex; font-size:10.5px; font-weight:800; padding:3px 9px; border-radius:999px;
+    background:rgba(255,255,255,.14); color:#fff; letter-spacing:.04em; margin-left:8px; vertical-align:1px;
+  }
+  .hero-scenarios{display:flex; flex-direction:column; gap:6px;}
+  .hero-sc{display:flex; align-items:baseline; justify-content:space-between; gap:8px; font-size:12px;}
+  .hero-sc .path{color:#fff; font-weight:700;}
+  .hero-sc .pct{color:var(--gold); font-weight:800; font-variant-numeric:tabular-nums;}
+  .hero-note{font-size:12px; color:#C9CCE0; line-height:1.6;}
   .action{
     margin-top:auto; font-size:12.5px; padding:10px 14px; border-radius:12px;
     background:var(--gold); color:var(--navy); font-weight:700; text-align:center;
@@ -164,6 +169,8 @@
   .pill.warn{background:var(--app-warn-soft); color:var(--app-warn);}
   .pill.navy{background:var(--app-navy); color:#fff;}
   .pill.gold{background:var(--app-gold-soft); color:#7A5400;}
+  .pill.risk-low{background:var(--app-good-soft); color:var(--app-good);}
+  .pill.risk-high{background:var(--app-warn-soft); color:var(--app-warn);}
 
   .cta{
     text-align:center; font-size:12.5px; font-weight:700; padding:11px; border-radius:12px;
@@ -186,7 +193,7 @@
   .bar-row .lab{width:64px; flex:none; color:var(--app-ink-soft);}
   .bar-track{flex:1; height:8px; background:var(--app-line); border-radius:999px; overflow:hidden;}
   .bar-fill{height:100%; background:var(--app-navy); border-radius:999px;}
-  .bar-row .amt{width:30px; text-align:right; font-weight:700; flex:none;}
+  .bar-row .amt{width:38px; text-align:right; font-weight:700; flex:none;}
 
   .timeline{display:flex; flex-direction:column;}
   .tl-item{display:flex; gap:10px; padding-bottom:14px; position:relative;}
@@ -199,15 +206,28 @@
 
   .ring{
     width:76px; height:76px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center;
-    background:conic-gradient(var(--app-navy) 0 82%, var(--app-line) 82% 100%);
   }
   .ring-in{width:58px; height:58px; border-radius:50%; background:var(--app-card); display:flex; align-items:center; justify-content:center; flex-direction:column;}
-  .ring-in b{font-size:16px; font-weight:800;} .ring-in span{font-size:8.5px; color:var(--app-ink-soft);}
+  .ring-in b{font-size:15px; font-weight:800;} .ring-in span{font-size:8px; color:var(--app-ink-soft);}
 
   .assume{
     background:var(--app-gold-soft); border:1px solid #ECD489; border-radius:12px; padding:9px 11px;
     font-size:10.5px; color:#7A5400; line-height:1.5;
   }
+
+  /* 시나리오 트리 */
+  .scenario{border:1px solid var(--app-line); border-radius:13px; padding:10px 12px; background:var(--app-bg);}
+  .scenario + .scenario{margin-top:7px;}
+  .scenario .shead{display:flex; align-items:center; justify-content:space-between; gap:8px;}
+  .scenario .slabel{font-size:9.5px; font-weight:800; color:var(--app-ink-soft); letter-spacing:.04em;}
+  .scenario .spath{font-size:12.5px; font-weight:700; margin-top:2px;}
+  .scenario .spct{font-size:13px; font-weight:800; color:var(--app-navy); font-variant-numeric:tabular-nums;}
+  .scenario .ssub{font-size:10px; color:var(--app-ink-soft); margin-top:4px; line-height:1.5;}
+
+  /* 감시조건 리스트 */
+  .watchlist{display:flex; flex-direction:column; gap:6px; margin:6px 0 0; padding:0; list-style:none;}
+  .watchlist li{font-size:10.5px; color:var(--app-ink-soft); line-height:1.5; padding-left:13px; position:relative;}
+  .watchlist li::before{content:"";position:absolute; left:0; top:6px; width:4px; height:4px; border-radius:50%; background:var(--app-navy);}
 
   .tabbar{
     flex:none; display:flex; align-items:center; justify-content:space-around;
@@ -235,9 +255,9 @@
 <div class="page">
   <div class="wrap">
 
-    <span class="eyebrow">CORTIS 앱 디자인 콘셉트</span>
-    <h1>같은 이벤트도, 히스토리가 다르면 다르게 준비시켜주는 앱</h1>
-    <p class="lede">KB 청년 대출자를 위한 생애주기 예측/정책 매칭 에이전트 CORTIS의 화면 구성안. 신뢰감을 주는 네이비 & 골드과 매일 들여다볼 가벼움(카드형 UI, 여유 있는 여백)을 함께 담았다.</p>
+    <span class="eyebrow">CORTIS 앱 디자인 콘셉트 · 코드 기반 v2</span>
+    <h1>확신 없을 땐 확신 있는 척하지 않는 앱</h1>
+    <p class="lede">전 화면의 숫자·문구는 실제 백엔드/파이프라인 코드를 직접 돌려서 나온 값이다(가공 없음). 엔트로피 기반 confidence, DSR·NPV 포트폴리오 계산, 시나리오 트리 — 전부 지금 코드에 있는 그대로 반영했다.</p>
 
     <div class="sysbar">
       <div class="lockup">
@@ -252,8 +272,8 @@
         <div class="swatch"><span class="chip-color" style="background:#1F2547"></span><span class="lab"><b>Navy #1F2547</b>신뢰·헤더</span></div>
         <div class="swatch"><span class="chip-color" style="background:#F0AC00"></span><span class="lab"><b>Gold #F0AC00</b>브랜드·CTA</span></div>
         <div class="swatch"><span class="chip-color" style="background:#FBF8F1;border-color:#ddd"></span><span class="lab"><b>Paper #FBF8F1</b>배경</span></div>
-        <div class="swatch"><span class="chip-color" style="background:#2E9B6B"></span><span class="lab"><b>Good #2E9B6B</b>자격충족</span></div>
-        <div class="swatch"><span class="chip-color" style="background:#DA8A2E"></span><span class="lab"><b>Warn #DA8A2E</b>확인필요</span></div>
+        <div class="swatch"><span class="chip-color" style="background:#2E9B6B"></span><span class="lab"><b>Good #2E9B6B</b>자격충족·저위험</span></div>
+        <div class="swatch"><span class="chip-color" style="background:#DA8A2E"></span><span class="lab"><b>Warn #DA8A2E</b>확인필요·고위험</span></div>
       </div>
       <div class="typespec">
         <div><b>제목</b> · SD Gothic Neo / Pretendard, 800</div>
@@ -262,44 +282,42 @@
       </div>
     </div>
 
-    <!-- ============ 히어로: 조건부 추론 대비 ============ -->
+    <!-- ============ 히어로: 조건부 추론 대비 (scenario_tree.py 실행 결과 그대로) ============ -->
     <div class="section">
       <div class="contrast">
         <div class="contrast-top">
-          <h2>같은 &lsquo;취업&rsquo;, 다른 다음 이벤트</h2>
-          <p>고정된 순서표가 아니라 진짜 조건부 추론이라는 걸 증명하는 장면. 히스토리만 다른 두 유저에게 같은 이벤트를 적용하면 예측과 사전 안내가 갈린다.</p>
+          <h2>같은 &lsquo;취업&rsquo;, 다른 다음 시나리오</h2>
+          <p><code>pipeline/scenario_tree.py</code>를 실제 두 유저(U_A/U_B) 데이터로 돌린 결과. 300개 코호트 규모에 오프라인 해시 임베딩을 쓰는 지금 설정에서는 최상위 이벤트 하나로 단정하기엔 근거가 고르게 퍼져 confidence가 LOW로 나온다 — 그래서 하나를 우기는 대신 확률이 높은 시나리오 3개를 나란히 보여준다.</p>
         </div>
         <div class="contrast-grid">
           <div class="userpane">
             <div class="who">
               <div class="avatar"></div>
-              <div><b>유저 A · 김하늘</b><span>대학생 → 졸업 → 취업</span></div>
+              <div><b>유저 A · 김하늘</b><span>대학생 → 졸업 → 취업 ✓ 확정</span></div>
             </div>
-            <div class="history">
-              <span class="hchip">대학생</span><span class="hchip">졸업</span><span class="hchip" style="background:var(--gold);color:var(--navy);border-color:transparent;">취업 ✓ 확정</span>
+            <div class="predict-line">Confidence <span class="confpill">LOW</span></div>
+            <div class="hero-scenarios">
+              <div class="hero-sc"><span class="path">Scenario A · 결혼 → 결혼</span><span class="pct">11.2%</span></div>
+              <div class="hero-sc"><span class="path">Scenario B · 독립(전세) → 결혼</span><span class="pct">5.5%</span></div>
+              <div class="hero-sc"><span class="path">Scenario C · 이직 → 결혼</span><span class="pct">4.4%</span></div>
             </div>
-            <div>
-              <div class="predict-line">Next Event Prediction</div>
-              <div class="predict-result">독립(월세) 유력</div>
-              <div class="evidence">유사 코호트 <b>5건 중 3건</b>이 취업 다음 독립(월세)을 겪음</div>
-            </div>
-            <div class="action">전월세자금대출 정책 미리 안내</div>
+            <div class="hero-note">세 시나리오 모두 2단계에서 결혼으로 수렴 — 경로는 갈려도 종착점은 비슷하다.</div>
+            <div class="action">결혼 대비 정책 미리 안내</div>
           </div>
           <div class="vs">VS</div>
           <div class="userpane">
             <div class="who">
               <div class="avatar" style="background:#8E93B8;"></div>
-              <div><b>유저 B · 박지훈</b><span>취업 → 이직 → 독립(월세) → 퇴직 → 취업</span></div>
+              <div><b>유저 B · 박지훈</b><span>취업→이직→독립(월세)→퇴직→취업 ✓ 확정</span></div>
             </div>
-            <div class="history">
-              <span class="hchip">이직</span><span class="hchip">독립(월세)</span><span class="hchip" style="background:var(--gold);color:var(--navy);border-color:transparent;">취업 ✓ 확정</span>
+            <div class="predict-line">Confidence <span class="confpill">LOW</span></div>
+            <div class="hero-scenarios">
+              <div class="hero-sc"><span class="path">Scenario A · 결혼 → 결혼</span><span class="pct">5.3%</span></div>
+              <div class="hero-sc"><span class="path">Scenario B · 취업 → 이직</span><span class="pct">4.0%</span></div>
+              <div class="hero-sc"><span class="path">Scenario C · 이직 → 이직</span><span class="pct">2.7%</span></div>
             </div>
-            <div>
-              <div class="predict-line">Next Event Prediction</div>
-              <div class="predict-result">결혼 유력</div>
-              <div class="evidence">유사 코호트 <b>5건 중 2건</b>이 재취업 다음 결혼을 겪음</div>
-            </div>
-            <div class="action">신혼부부 전세자금대출 미리 안내</div>
+            <div class="hero-note">같은 재취업이라도 이력이 더 길고 이직 이력이 있어 &lsquo;이직 재발&rsquo; 시나리오 비중이 A보다 훨씬 크다.</div>
+            <div class="action">결혼 대비 + 기존 대출 재구성 동시 확인</div>
           </div>
         </div>
       </div>
@@ -309,7 +327,7 @@
     <div class="section">
       <div class="section-head">
         <h2>화면 구성 — 7개</h2>
-        <p>하단 탭은 4개(홈 · 생애이벤트 · 정책·대출 · MY)만 두고, 상환관리(B파트)는 우선순위대로 홈 안에 카드로 접어 넣었다.</p>
+        <p>하단 탭은 4개(홈 · 생애이벤트 · 정책·대출 · MY)만 두고, 포트폴리오 추천(NPV/DSR 결정 레이어)은 우선순위대로 생애이벤트 흐름 안에 이어 붙였다.</p>
       </div>
 
       <div class="phones">
@@ -317,7 +335,7 @@
         <!-- 1. 홈 -->
         <div class="phone-slot">
           <div class="phone-label"><span class="phone-index">01</span><span class="phone-title">홈</span></div>
-          <p class="phone-desc">상환 현황 + CORTIS가 감지한 변화 + 예측 요약을 한 화면에</p>
+          <p class="phone-desc">상환 현황 + 감지된 변화 + 예측/DSR 요약을 한 화면에 (GET /users/{id} 기반)</p>
           <div class="phone"><div class="notch"></div>
             <div class="statusbar"><span>9:41</span><span>••• 5G 100%</span></div>
             <div class="screen">
@@ -326,24 +344,23 @@
               </div>
               <div class="content">
                 <div class="card" style="background:var(--app-navy); color:#fff; border:none;">
-                  <div class="k" style="color:#B9BDDA;">다음 상환일 · D-6</div>
+                  <div class="k" style="color:#B9BDDA;">다음 상환일 · 매월 15일</div>
                   <div class="v num" style="color:#fff;">180,000원</div>
-                  <div class="row" style="margin-top:8px;"><span class="d" style="color:#C9CCE0;">KB 학자금대출</span><span class="pill good">정상</span></div>
+                  <div class="row" style="margin-top:8px;"><span class="d" style="color:#C9CCE0;">KB 학자금 대출 · 잔액 8,400,000원</span><span class="pill good">정상</span></div>
                 </div>
                 <div class="card">
                   <div class="row"><span class="k">CORTIS가 감지한 변화</span><span class="pill warn">확인필요</span></div>
-                  <div class="d" style="margin-top:6px; color:var(--app-ink);">최근 3개월 급여 입금 패턴이 달라졌어요.</div>
-                  <div class="cta gold" style="margin-top:10px;">무슨 일인지 확인하기</div>
+                  <div class="d" style="margin-top:6px; color:var(--app-ink);">&lsquo;(주)테크스타트&rsquo;에서 매월 급여성 입금이 3회 확인됐어요. 취업하셨나요?</div>
+                  <div class="cta gold" style="margin-top:10px;">확인하고 반영하기</div>
                 </div>
                 <div class="card">
-                  <div class="k">다음 이벤트 예측</div>
-                  <div class="row" style="margin-top:4px;"><span class="v" style="font-size:14.5px;">독립(월세) 유력</span><span class="pill navy">MEDIUM</span></div>
-                  <div class="d">근거 5건 중 3건 · 예측 자세히 보기 →</div>
+                  <div class="row"><span class="k">다음 이벤트 예측</span><span class="pill navy">LOW</span></div>
+                  <div class="d" style="margin-top:2px;">근거가 결혼/독립(전세)으로 갈려요 · 시나리오 3개 보기 →</div>
                 </div>
                 <div class="card">
                   <div class="row">
-                    <div class="ring"><div class="ring-in"><b>82%</b><span>여유</span></div></div>
-                    <div><div class="k">이번 달 상환 여유</div><div class="d">소득 변동에도 안정적이에요</div></div>
+                    <div class="ring"><div class="ring-in" style="background:conic-gradient(var(--app-navy) 0 19%, var(--app-line) 19% 100%); padding:9px;"><div style="width:100%;height:100%;border-radius:50%;background:var(--app-card);display:flex;flex-direction:column;align-items:center;justify-content:center;"><b>7.5%</b><span>/ 상한 40%</span></div></div></div>
+                    <div><div class="row"><span class="k">DSR</span><span class="pill risk-low">저위험</span></div><div class="d">총비용(NPV) 최소화 전략이 우선 적용돼요</div></div>
                   </div>
                 </div>
               </div>
@@ -360,7 +377,7 @@
         <!-- 2. 이벤트 확인 -->
         <div class="phone-slot">
           <div class="phone-label"><span class="phone-index">02</span><span class="phone-title">이벤트 확인</span></div>
-          <p class="phone-desc">규칙기반으로 감지된 변화를 사용자가 직접 확정</p>
+          <p class="phone-desc">규칙기반 감지(detector.py) → 사용자 확정. POST /events/{id}/confirm이 agentic 순환의 트리거</p>
           <div class="phone"><div class="notch"></div>
             <div class="statusbar"><span>9:41</span><span>••• 5G 100%</span></div>
             <div class="screen">
@@ -389,17 +406,17 @@
           </div>
         </div>
 
-        <!-- 3. 예측 결과 -->
+        <!-- 3. 예측 & 시나리오 -->
         <div class="phone-slot">
-          <div class="phone-label"><span class="phone-index">03</span><span class="phone-title">생애주기 예측</span></div>
-          <p class="phone-desc">유사 코호트 검색 근거 + LLM 추론 결과 (C엔진)</p>
+          <div class="phone-label"><span class="phone-index">03</span><span class="phone-title">생애주기 예측 &amp; 시나리오</span></div>
+          <p class="phone-desc">History+State+Transaction 3분리 임베딩 검색 → 엔트로피 기반 confidence → scenario_tree.py</p>
           <div class="phone"><div class="notch"></div>
             <div class="statusbar"><span>9:41</span><span>••• 5G 100%</span></div>
             <div class="screen">
               <div class="appbar"><div class="t">다음 이벤트 예측</div></div>
               <div class="content">
                 <div class="card"><div class="k">확정 히스토리</div>
-                  <div class="history" style="margin-top:6px;">
+                  <div class="history" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
                     <span class="hchip" style="background:var(--app-card-2); border:1px solid var(--app-line); color:var(--app-ink);">대학생</span>
                     <span class="hchip" style="background:var(--app-card-2); border:1px solid var(--app-line); color:var(--app-ink);">졸업</span>
                     <span class="hchip" style="background:var(--app-navy); color:#fff;">취업</span>
@@ -408,16 +425,32 @@
                 <div class="card">
                   <div class="k">유사 코호트 검색 결과 (top 5 / 300)</div>
                   <div class="bars" style="margin-top:8px;">
-                    <div class="bar-row"><span class="lab">독립(월세)</span><div class="bar-track"><div class="bar-fill" style="width:60%;"></div></div><span class="amt">3건</span></div>
-                    <div class="bar-row"><span class="lab">결혼</span><div class="bar-track"><div class="bar-fill" style="width:20%; background:var(--app-line);"></div></div><span class="amt">1건</span></div>
-                    <div class="bar-row"><span class="lab">독립(전세)</span><div class="bar-track"><div class="bar-fill" style="width:20%; background:var(--app-line);"></div></div><span class="amt">1건</span></div>
+                    <div class="bar-row"><span class="lab">결혼</span><div class="bar-track"><div class="bar-fill" style="width:60%;"></div></div><span class="amt">3건·60%</span></div>
+                    <div class="bar-row"><span class="lab">독립(전세)</span><div class="bar-track"><div class="bar-fill" style="width:40%; background:var(--app-line);"></div></div><span class="amt">2건·40%</span></div>
                   </div>
                 </div>
                 <div class="card" style="background:var(--app-navy); border:none; color:#fff;">
-                  <div class="row"><span class="k" style="color:#B9BDDA;">예측 신뢰도</span><span class="pill gold">MEDIUM</span></div>
-                  <div class="d" style="color:#C9CCE0; margin-top:6px;">검색된 유사 사례 5건 중 3건이 다음으로 독립(월세)을 겪었어요. 급여가 안정된 지 2개월째라 독립 가능성이 함께 높아졌어요.</div>
+                  <div class="row"><span class="k" style="color:#B9BDDA;">예측 신뢰도</span><span class="pill" style="background:rgba(255,255,255,.14); color:#fff;">LOW</span></div>
+                  <div class="d" style="color:#C9CCE0; margin-top:6px;">여러 이벤트에 근거가 고르게 분산돼(분포 집중도 3%) 특정 이벤트로 확신하기 어려움 — 그래서 시나리오 3개를 함께 보여드려요.</div>
                 </div>
-                <div class="cta gold">전월세자금대출 정책 미리 보기</div>
+                <div class="card">
+                  <div class="k">시나리오 트리 (2단계 전개)</div>
+                  <div style="margin-top:8px;">
+                    <div class="scenario">
+                      <div class="shead"><div><div class="slabel">SCENARIO A</div><div class="spath">결혼 → 결혼</div></div><div class="spct">11.2%</div></div>
+                      <div class="ssub">예상 필요자금 약 6,800만원(결혼정보회사 듀오 2025 보고서 근거) · 약 29개월 후</div>
+                    </div>
+                    <div class="scenario">
+                      <div class="shead"><div><div class="slabel">SCENARIO B</div><div class="spath">독립(전세) → 결혼</div></div><div class="spct">5.5%</div></div>
+                      <div class="ssub">독립(전세) 필요자금 약 1.1억원(버팀목전세 한도 근거) · 약 12개월 후</div>
+                    </div>
+                    <div class="scenario">
+                      <div class="shead"><div><div class="slabel">SCENARIO C</div><div class="spath">이직 → 결혼</div></div><div class="spct">4.4%</div></div>
+                      <div class="ssub">이직까지 약 9개월 후 예상</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="cta gold">결혼 대비 정책 미리 보기</div>
               </div>
               <div class="tabbar">
                 <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h5v-5h2v5h5V10.5"/></svg><span>홈</span></div>
@@ -432,18 +465,17 @@
         <!-- 4. 정책·대출 매칭 -->
         <div class="phone-slot">
           <div class="phone-label"><span class="phone-index">04</span><span class="phone-title">정책·대출 매칭</span></div>
-          <p class="phone-desc">예측 이벤트 발생을 가정한 사전 안내 (A파트)</p>
+          <p class="phone-desc">POST /users/{id}/policy-match·/loan-match 실제 응답 (prospective=True, 결혼 발생 가정)</p>
           <div class="phone"><div class="notch"></div>
             <div class="statusbar"><span>9:41</span><span>••• 5G 100%</span></div>
             <div class="screen">
-              <div class="appbar"><div class="t">독립(월세) 대비 추천</div></div>
+              <div class="appbar"><div class="t">결혼 대비 추천</div></div>
               <div class="content">
-                <div class="assume">&lsquo;독립(월세)&rsquo; 발생을 가정한 사전 안내예요. 실제 계약 전에도 미리 확인할 수 있어요.</div>
+                <div class="assume">&lsquo;결혼&rsquo; 발생을 가정한 사전 안내예요(혼인상태: 기혼 가정). 실제 확정 전에도 미리 확인할 수 있어요.</div>
                 <div class="list">
-                  <div class="list-item"><div><div class="name">서울시 청년월세지원</div><div class="sub">월 20만원 × 10개월</div></div><span class="pill good">자격충족</span></div>
-                  <div class="list-item"><div><div class="name">청년월세 한시 특별지원</div><div class="sub">월 20만원 × 12개월</div></div><span class="pill good">자격충족</span></div>
-                  <div class="list-item"><div><div class="name">KB 청년 보증부월세대출</div><div class="sub">연 2.60 ~ 3.80%</div></div><span class="pill good">자격충족</span></div>
-                  <div class="list-item" style="opacity:.55;"><div><div class="name">중소기업취업청년 대출</div><div class="sub">고용형태 요건 미충족</div></div><span class="pill" style="background:#F1E4E3; color:var(--bad);">해당없음</span></div>
+                  <div class="list-item"><div><div class="name">신혼부부 전용 전세자금대출</div><div class="sub">연 1.50%</div></div><span class="pill good">자격충족</span></div>
+                  <div class="list-item"><div><div class="name">청년전용 버팀목전세자금대출</div><div class="sub">연 2.00%</div></div><span class="pill good">자격충족</span></div>
+                  <div class="list-item"><div><div class="name">KB 청년전용 전세자금대출</div><div class="sub">연 3.10 ~ 4.50%</div></div><span class="pill good">자격충족</span></div>
                 </div>
                 <div class="cta ghost">전체 정책 15건 보기</div>
               </div>
@@ -457,35 +489,48 @@
           </div>
         </div>
 
-        <!-- 5. 상환 관리 -->
+        <!-- 5. 포트폴리오 추천 -->
         <div class="phone-slot">
-          <div class="phone-label"><span class="phone-index">05</span><span class="phone-title">상환 관리</span></div>
-          <p class="phone-desc">유동성 버퍼 + 넛지 문구 + 갈아타기 절감액 (B파트, 홈 카드에서 진입)</p>
+          <div class="phone-label"><span class="phone-index">05</span><span class="phone-title">포트폴리오 추천</span></div>
+          <p class="phone-desc">유저 B · pipeline/portfolio.py select_best_portfolio() 실행 결과 그대로 (NPV·DSR·스트레스DSR 전부 계산값)</p>
           <div class="phone"><div class="notch"></div>
             <div class="statusbar"><span>9:41</span><span>••• 5G 100%</span></div>
             <div class="screen">
-              <div class="appbar"><div class="t">이번 달 상환 플랜</div></div>
+              <div class="appbar"><div class="t">결혼 대비 대출 재구성</div></div>
               <div class="content">
-                <div class="card" style="display:flex; align-items:center; gap:14px;">
-                  <div class="ring"><div class="ring-in"><b>82%</b><span>여유</span></div></div>
-                  <div><div class="k">유동성 버퍼</div><div class="d">소득 변동성 대비 이번 달은 여유가 있어요</div></div>
+                <div class="assume">&lsquo;결혼&rsquo;은 아직 예측 단계예요. 실제 확정되면 재계산됩니다(잠정 추천).</div>
+                <div class="card">
+                  <div class="row"><span class="k">유동성 리스크</span><span class="pill risk-high">고위험</span></div>
+                  <div class="d">계약직 · 소득 변동성 34.0% → 총비용보다 월상환액 안정성을 먼저 봐요</div>
                 </div>
-                <div class="card" style="background:var(--app-gold-soft); border-color:#ECD489;">
-                  <div class="k" style="color:#7A5400;">CORTIS의 제안</div>
-                  <div class="d" style="color:#5C4200; margin-top:4px;">여유가 있는 달이에요. 학자금대출 상환일을 6일 앞당겨 이자를 조금 더 줄여볼까요?</div>
+                <div class="card" style="background:var(--app-navy); color:#fff; border:none;">
+                  <div class="k" style="color:#B9BDDA;">추천 결과</div>
+                  <div class="v" style="color:#fff;">두 대출 모두 유지(KEEP)</div>
+                  <div class="row" style="margin-top:8px;">
+                    <span class="d" style="color:#C9CCE0;">월상환액 490,000원</span>
+                    <span class="d" style="color:#C9CCE0;">DSR 15.8%(스트레스 15.8%)</span>
+                  </div>
                 </div>
                 <div class="card">
-                  <div class="row"><span class="k">대출 갈아타기</span><span class="pill navy">절감 시뮬레이션</span></div>
-                  <div class="v" style="margin-top:6px;">월 84,000원 절감</div>
-                  <div class="d">KB 청년 보증부월세화면 7개(핵심 6 + 대비 데모 1) · 탭 4개(홈 / 생애이벤트 / 정책·대출 / MY) · 팔레트 네이비+골드, 파운데이션은 따뜻한 페이퍼 화이트 · 톤은 “매일 지켜보는 PB” — 딱딱하지 않되 숫자 앞에서는 진지하게.
-                    대출로 갈아타면 연 1.2%p ↓</div>
+                  <div class="k">왜 대환을 안 했나요?</div>
+                  <div class="d">신혼부부 전세대출(1.5%) 등으로 갈아타면 새 대출로 다시 잡혀 월상환액이 급증, DSR이 최대 94%까지 치솟아 상한(40%)을 넘어요. 20개 조합 중 대부분이 이 이유로 탈락했어요.</div>
                 </div>
-                <div class="cta gold">상환 스케줄 조정하기</div>
+                <div class="card">
+                  <div class="k">2순위 비교 — 참고용</div>
+                  <div class="d">LN_B_2 전액 조기상환(3,000,000원) → 월상환액 686,929원(↑196,929) / 총비용(NPV) 1,360,469원(↓392,815) — 총비용은 줄지만 월상환 부담이 커져 채택 안 함</div>
+                </div>
+                <div class="card">
+                  <div class="k">재검토 트리거</div>
+                  <ul class="watchlist">
+                    <li>&lsquo;결혼&rsquo; 이벤트가 실제로 확정되면 재계산 필요(현재는 예측 기반 잠정 추천)</li>
+                    <li>다음 생애주기 이벤트가 새로 확정될 때마다 포트폴리오 재계산</li>
+                  </ul>
+                </div>
               </div>
               <div class="tabbar">
-                <div class="tab active"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h5v-5h2v5h5V10.5"/></svg><span>홈</span></div>
+                <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h5v-5h2v5h5V10.5"/></svg><span>홈</span></div>
                 <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="18" r="1.5"/><circle cx="12" cy="9" r="1.5"/><circle cx="19" cy="14" r="1.5"/><path d="M6.3 16.8 10.7 10.3M13.3 10.1 17.7 12.9"/></svg><span>생애이벤트</span></div>
-                <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M8 8.5h8M8 12h8M8 15.5h5"/></svg><span>정책·대출</span></div>
+                <div class="tab active"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M8 8.5h8M8 12h8M8 15.5h5"/></svg><span>정책·대출</span></div>
                 <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8.3" r="3.1"/><path d="M5 20c1.2-4 4-5.8 7-5.8s5.8 1.8 7 5.8"/></svg><span>MY</span></div>
               </div>
             </div>
@@ -495,7 +540,7 @@
         <!-- 6. MY -->
         <div class="phone-slot">
           <div class="phone-label"><span class="phone-index">06</span><span class="phone-title">MY</span></div>
-          <p class="phone-desc">프로필 + 확정 이벤트 타임라인 + 설정</p>
+          <p class="phone-desc">프로필(여유자금 포함) + 확정 이벤트 타임라인 + 설정</p>
           <div class="phone"><div class="notch"></div>
             <div class="statusbar"><span>9:41</span><span>••• 5G 100%</span></div>
             <div class="screen">
@@ -503,14 +548,18 @@
               <div class="content">
                 <div class="card" style="display:flex; align-items:center; gap:12px;">
                   <div class="avatar" style="width:42px;height:42px;border-radius:12px;background:var(--app-navy);"></div>
-                  <div><div class="name" style="font-weight:800; font-size:14px;">김하늘</div><div class="sub">정규직 · 신용점수 752</div></div>
+                  <div><div class="name" style="font-weight:800; font-size:14px;">김하늘</div><div class="sub" style="font-size:11px; color:var(--app-ink-soft);">정규직 · 신용점수 752</div></div>
+                </div>
+                <div class="card">
+                  <div class="row"><span class="k">여유자금(예금 잔액)</span><span class="v" style="font-size:13px;">2,000,000원</span></div>
+                  <div class="d">조기상환 여력 판단에 쓰여요 — 대출 잔액보다 적게 잡혀 있어서 &lsquo;무조건 전액상환&rsquo;으로 결론나지 않아요</div>
                 </div>
                 <div class="card">
                   <div class="k">확정 이벤트 타임라인</div>
                   <div class="timeline" style="margin-top:10px;">
                     <div class="tl-item"><div class="tl-dotcol"><div class="tl-dot"></div><div class="tl-line"></div></div><div class="tl-text"><b>대학생</b><span>2020.03</span></div></div>
                     <div class="tl-item"><div class="tl-dotcol"><div class="tl-dot"></div><div class="tl-line"></div></div><div class="tl-text"><b>졸업</b><span>2026.02</span></div></div>
-                    <div class="tl-item"><div class="tl-dotcol"><div class="tl-dot"></div></div><div class="tl-text"><b>취업 · (주)테크스타트</b><span>2026.06 · 확정됨</span></div></div>
+                    <div class="tl-item"><div class="tl-dotcol"><div class="tl-dot"></div></div><div class="tl-text"><b>취업 · (주)테크스타트</b><span>2026.04 · 확정됨</span></div></div>
                   </div>
                 </div>
                 <div class="list">
@@ -535,23 +584,24 @@
     <!-- ============ 하단 노트 ============ -->
     <div class="notes">
       <div class="note-card">
-        <h3>Figma로 넘길 때 체크할 것</h3>
+        <h3>이번 v2에서 실제로 바뀐 것</h3>
         <ul>
-          <li>로고는 자리표시자리 — 제출 전 KB금융 공식 브랜드 가이드의 실제 로고와 정확한 컬러 코드로 교체할 것</li>
-          <li>본문 서체는 실제로는 <b>Pretendard</b>(국내 핀테크 앱 표준) 또는 KB 자체 서체(KBFG체)로</li>
-          <li>탭 4개 구조는 우선순위(C 메인 / A 서포팅 / B 후순위)를 그대로 반영 — B가 늘어나면 5번째 탭으로 넘기기</li>
+          <li>가짜 &ldquo;5건 중 3건·MEDIUM&rdquo; 대신 <b>실제 엔트로피 기반 confidence(LOW)</b>와 그 근거 문장을 그대로 씀</li>
+          <li>&ldquo;유동성 버퍼 82%&rdquo; 같은 만든 수치를 빼고 <b>실제 DSR(7.5% / 15.8%)과 40% 상한</b>으로 교체</li>
+          <li>포트폴리오 추천 화면은 <code>select_best_portfolio()</code>를 직접 실행해 나온 <b>실제 승자(KEEP)와 탈락 사유</b>를 그대로 보여줌 — 대환이 항상 이기지 않는다는 것도 실제 계산 결과</li>
+          <li>정책·대출 매칭 트리거를 실제 예측 1순위인 <b>&lsquo;결혼&rsquo;</b>으로 맞춤 (기존엔 &lsquo;독립(월세)&rsquo;로 가정했으나 실제 검색 결과와 안 맞았음)</li>
         </ul>
       </div>
       <div class="note-card">
-        <h3>자동 디자인 도구로 넘기기</h3>
+        <h3>발표 전 체크 (pipeline/README.md 발췌)</h3>
         <ul>
-          <li><b>Figma 자체 AI(First Draft 등)</b> — 이 화면 캡처나 설명을 넣으면 바로 편집 가능한 Figma 레이어로 변환 가능</li>
-          <li><b>Uizard</b> — 텍스트/스크린샷 → 목업, Figma 임포트 플러그인 지원, 비개발자도 빠름</li>
-          <li><b>Visily</b> — 위와 유사, 템플릿이 많아 화면 수 늘릴 때 편함</li>
+          <li><code>LLM_BACKEND=anthropic</code>으로 돌려야 요약 문장에 &ldquo;[MOCK]&rdquo;이 안 붙음</li>
+          <li>이 화면들의 숫자는 <code>EMBEDDING_BACKEND=offline</code>(해시) 기준 — 실 임베딩(text-embedding-3-small)로 바꾸면 confidence가 더 또렷해질 가능성 있음, 발표 전 재확인 권장</li>
+          <li>포트폴리오 화면은 아직 FastAPI 엔드포인트가 아니라 <code>demo_portfolio_flow.py</code> 스크립트 결과 — 앱에 실시간 연결하려면 라우터 추가 필요</li>
         </ul>
       </div>
     </div>
 
-    <p class="footline">화면 7개(핵심 6 + 대비 데모 1) /  탭 4개(홈 / 생애이벤트 / 정책·대출 / MY) / 팔레트 네이비+골드, 파운데이션은 따뜻한 페이퍼 화이트 </p>
+    <p class="footline">화면 7개(히어로 대비 1 + 핵심 6) · 탭 4개(홈 / 생애이벤트 / 정책·대출 / MY) · 팔레트 네이비+골드, 파운데이션은 따뜻한 페이퍼 화이트 · 모든 수치는 코드 실행 결과 그대로.</p>
   </div>
 </div>
