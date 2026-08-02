@@ -287,7 +287,7 @@
       <div class="contrast">
         <div class="contrast-top">
           <h2>같은 &lsquo;취업&rsquo;, 다른 다음 시나리오</h2>
-          <p><code>pipeline/scenario_tree.py</code>를 실제 두 유저(U_A/U_B) 데이터로 돌린 결과. 300개 코호트 규모에 오프라인 해시 임베딩을 쓰는 지금 설정에서는 최상위 이벤트 하나로 단정하기엔 근거가 고르게 퍼져 confidence가 LOW로 나온다 — 그래서 하나를 우기는 대신 확률이 높은 시나리오 3개를 나란히 보여준다.</p>
+          <p><code>pipeline/scenario_tree.py</code>를 실제 두 유저(U_A/U_B) 데이터로 돌린 결과. 300개 코호트 규모에 오프라인 해시 임베딩을 쓰는 지금 설정에서는 최상위 이벤트 하나로 단정하기엔 근거가 고르게 퍼져 confidence가 LOW로 나온다 — 그래서 하나를 우기는 대신 확률이 높은 시나리오 3개를 나란히 보여준다. 시나리오 라벨(A/B/C)은 1단계 검색 순위 기준이라 최종 정렬(결합확률순)과 순서가 다를 수 있다 — 예: B에서 &lsquo;시나리오 B&rsquo;가 1위로 표시됨.</p>
         </div>
         <div class="contrast-grid">
           <div class="userpane">
@@ -297,11 +297,11 @@
             </div>
             <div class="predict-line">Confidence <span class="confpill">LOW</span></div>
             <div class="hero-scenarios">
-              <div class="hero-sc"><span class="path">Scenario A · 결혼 → 결혼</span><span class="pct">11.2%</span></div>
+              <div class="hero-sc"><span class="path">Scenario A · 결혼 → 이직</span><span class="pct">6.7%</span></div>
               <div class="hero-sc"><span class="path">Scenario B · 독립(전세) → 결혼</span><span class="pct">5.5%</span></div>
               <div class="hero-sc"><span class="path">Scenario C · 이직 → 결혼</span><span class="pct">4.4%</span></div>
             </div>
-            <div class="hero-note">세 시나리오 모두 2단계에서 결혼으로 수렴 — 경로는 갈려도 종착점은 비슷하다.</div>
+            <div class="hero-note">1위 근거(결혼) 다음엔 이직 가능성이 가장 크게 잡힘 — 결혼 준비와 이직 대비를 함께 보여줘야 하는 케이스.</div>
             <div class="action">결혼 대비 정책 미리 안내</div>
           </div>
           <div class="vs">VS</div>
@@ -312,11 +312,11 @@
             </div>
             <div class="predict-line">Confidence <span class="confpill">LOW</span></div>
             <div class="hero-scenarios">
-              <div class="hero-sc"><span class="path">Scenario A · 결혼 → 결혼</span><span class="pct">5.3%</span></div>
               <div class="hero-sc"><span class="path">Scenario B · 취업 → 이직</span><span class="pct">4.0%</span></div>
-              <div class="hero-sc"><span class="path">Scenario C · 이직 → 이직</span><span class="pct">2.7%</span></div>
+              <div class="hero-sc"><span class="path">Scenario A · 결혼 → 이직</span><span class="pct">3.6%</span></div>
+              <div class="hero-sc"><span class="path">Scenario C · 이직 → 결혼</span><span class="pct">2.7%</span></div>
             </div>
-            <div class="hero-note">같은 재취업이라도 이력이 더 길고 이직 이력이 있어 &lsquo;이직 재발&rsquo; 시나리오 비중이 A보다 훨씬 크다.</div>
+            <div class="hero-note">이직 이력이 있는 B는 세 시나리오 모두에 &lsquo;이직&rsquo;이 끼어 있음 — A와 달리 재이직 가능성이 꾸준히 따라붙는 이력.</div>
             <div class="action">결혼 대비 + 기존 대출 재구성 동시 확인</div>
           </div>
         </div>
@@ -408,7 +408,7 @@
 
         <!-- 3. 예측 & 시나리오 -->
         <div class="phone-slot">
-          <div class="phone-label"><span class="phone-index">03</span><span class="phone-title">생애주기 예측 &amp; 시나리오</span></div>
+          <div class="phone-label"><span class="phone-index">03</span><span class="phone-title">생애주기 예측·시나리오</span></div>
           <p class="phone-desc">History+State+Transaction 3분리 임베딩 검색 → 엔트로피 기반 confidence → scenario_tree.py</p>
           <div class="phone"><div class="notch"></div>
             <div class="statusbar"><span>9:41</span><span>••• 5G 100%</span></div>
@@ -437,16 +437,16 @@
                   <div class="k">시나리오 트리 (2단계 전개)</div>
                   <div style="margin-top:8px;">
                     <div class="scenario">
-                      <div class="shead"><div><div class="slabel">SCENARIO A</div><div class="spath">결혼 → 결혼</div></div><div class="spct">11.2%</div></div>
-                      <div class="ssub">예상 필요자금 약 6,800만원(결혼정보회사 듀오 2025 보고서 근거) · 약 29개월 후</div>
+                      <div class="shead"><div><div class="slabel">SCENARIO A</div><div class="spath">결혼 → 이직</div></div><div class="spct">6.7%</div></div>
+                      <div class="ssub">결혼 준비자금 약 7,350만원(결혼정보회사 듀오 2025 보고서 근거) · 약 27개월 후 → 이후 이직 가능성</div>
                     </div>
                     <div class="scenario">
                       <div class="shead"><div><div class="slabel">SCENARIO B</div><div class="spath">독립(전세) → 결혼</div></div><div class="spct">5.5%</div></div>
-                      <div class="ssub">독립(전세) 필요자금 약 1.1억원(버팀목전세 한도 근거) · 약 12개월 후</div>
+                      <div class="ssub">독립(전세) 필요자금 약 1.25억원(버팀목전세 한도 근거) · 약 22개월 후 → 이후 결혼 준비자금 약 7,540만원 · 약 28개월 후</div>
                     </div>
                     <div class="scenario">
                       <div class="shead"><div><div class="slabel">SCENARIO C</div><div class="spath">이직 → 결혼</div></div><div class="spct">4.4%</div></div>
-                      <div class="ssub">이직까지 약 9개월 후 예상</div>
+                      <div class="ssub">이직까지 약 20개월 후 → 이후 결혼 준비자금 약 6,930만원 · 약 27개월 후</div>
                     </div>
                   </div>
                 </div>
@@ -590,6 +590,7 @@
           <li>&ldquo;유동성 버퍼 82%&rdquo; 같은 만든 수치를 빼고 <b>실제 DSR(7.5% / 15.8%)과 40% 상한</b>으로 교체</li>
           <li>포트폴리오 추천 화면은 <code>select_best_portfolio()</code>를 직접 실행해 나온 <b>실제 승자(KEEP)와 탈락 사유</b>를 그대로 보여줌 — 대환이 항상 이기지 않는다는 것도 실제 계산 결과</li>
           <li>정책·대출 매칭 트리거를 실제 예측 1순위인 <b>&lsquo;결혼&rsquo;</b>으로 맞춤 (기존엔 &lsquo;독립(월세)&rsquo;로 가정했으나 실제 검색 결과와 안 맞았음)</li>
+          <li>시나리오 트리 1위가 &lsquo;결혼 → 결혼&rsquo;처럼 같은 이벤트를 반복하던 걸 발견해 공유했더니, <code>scenario_tree.py</code>에 반복 방지 가드가 바로 추가됨 — 이 문서의 시나리오 데이터도 그 이후 값으로 갱신</li>
         </ul>
       </div>
       <div class="note-card">
@@ -597,7 +598,7 @@
         <ul>
           <li><code>LLM_BACKEND=anthropic</code>으로 돌려야 요약 문장에 &ldquo;[MOCK]&rdquo;이 안 붙음</li>
           <li>이 화면들의 숫자는 <code>EMBEDDING_BACKEND=offline</code>(해시) 기준 — 실 임베딩(text-embedding-3-small)로 바꾸면 confidence가 더 또렷해질 가능성 있음, 발표 전 재확인 권장</li>
-          <li>포트폴리오 화면은 아직 FastAPI 엔드포인트가 아니라 <code>demo_portfolio_flow.py</code> 스크립트 결과 — 앱에 실시간 연결하려면 라우터 추가 필요</li>
+          <li>포트폴리오 화면은 <code>POST /demo/portfolio</code>로 실시간 연결됨 — <code>ui/demo.html</code>에서 이벤트 확정하면 자동으로 이어서 계산됨</li>
         </ul>
       </div>
     </div>
