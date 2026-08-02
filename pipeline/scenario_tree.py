@@ -88,7 +88,16 @@ def build_scenario_tree(
         depth2_agg = index.aggregate_next_events(depth2_matches)
 
         if depth2_agg:
-            event2, agg2 = next(iter(depth2_agg.items()))
+            # 같은 이벤트가 바로 다음에 다시 나오는 경우("결혼 -> 결혼")는 논리적으로 부자연스러운
+            # 케이스가 대부분이라, depth-2에서는 event1과 동일한 이벤트를 최우선 후보로 쓰지 않는다.
+            # (State/Tx가 depth-1과 동일한 스냅샷이라 생기는 부작용의 표면 증상 완화용 가드 —
+            # 근본 해결(State Transition 모델)은 이번 범위 밖. weighted_score/probability_pct
+            # 자체는 그대로 두고, depth2_agg 안에서 어떤 항목을 고를지만 바꾼다 — 계산 로직 불변)
+            non_repeat = [(e, a) for e, a in depth2_agg.items() if e != event1]
+            if non_repeat:
+                event2, agg2 = non_repeat[0]
+            else:
+                event2, agg2 = next(iter(depth2_agg.items()))
             step2 = _agg_to_step(event2, agg2)
             joint_pct = round(step1.probability_pct * step2.probability_pct / 100, 1)
             steps = [step1, step2]
