@@ -70,7 +70,9 @@ def run():
         return
     print(f"[3] 예측 완료: confidence={result.confidence_level}")
     for p in result.predictions:
-        print(f"    - {p['event']} (근거 {p['evidence_count']}건)")
+        timing = f"{p['expected_timing_months']:.0f}개월 후" if p['expected_timing_months'] is not None else "시점 추정 불가"
+        cash = f"약 {p['expected_cash_need_krw']:,}원" if p['expected_cash_need_krw'] is not None else "해당 없음"
+        print(f"    - {p['event']}: 확률 {p['probability_pct']}% / 예상시점 {timing} / 예상필요자금 {cash} (근거 {p['evidence_count']}건)")
 
     # 4) 예측 결과를 실제로 저장 (trigger_event_id는 방금 확정한 이벤트)
     matched_cohorts_payload = [
