@@ -15,6 +15,15 @@ Scenario Tree — 단일 다음 이벤트 예측을 depth-2 분기 시나리오�
     event1이 일어난 뒤 유저의 소득/거주 상태가 달라질 수 있지만(예: 독립 이후 소득 변화),
     그 변화를 시뮬레이션하는 State Transition 모델은 이 버전의 스코프 밖이다 — 이 한계는
     "State는 이벤트가 확정된 시점의 스냅샷"이라는 전제로 남겨둔다.
+
+    [실제 증상] 이 스냅샷 고정이 주 원인(약 65% 비중, similarity.py의 adaptive 가중치가
+    History 검색 엔트로피가 높을 때 State/Tx 비중을 최대 65%까지 올리기 때문)이고,
+    오프라인 해시 임베딩이 토큰 1개 추가만으로는 벡터가 크게 안 움직이는 특성은 부차적
+    원인(약 35%)이다. 두 요인이 겹치면 depth-1과 depth-2가 사실상 같은 이웃 코호트를
+    다시 찾아와 같은 이벤트가 연속으로 나올 수 있다(예: "결혼 -> 결혼"). 아래
+    build_scenario_tree()의 non_repeat 가드는 이 표면 증상만 제거하며, 근본 원인
+    (State Transition 미반영)은 여전히 남아있다 — 실제 임베딩(OpenAI 등)으로 교체해도
+    완전히 해결되지는 않는다.
   - joint_probability_pct = P(event1) x P(event2 | history+event1) / 100. depth-2 검색의
     확률은 이미 "event1이 일어난 뒤"라는 조건 하에서 집계된 값이라 조건부 확률의 정의와 맞는다.
 """
@@ -88,11 +97,9 @@ def build_scenario_tree(
         depth2_agg = index.aggregate_next_events(depth2_matches)
 
         if depth2_agg:
-            # 같은 이벤트가 바로 다음에 다시 나오는 경우("결혼 -> 결혼")는 논리적으로 부자연스러운
-            # 케이스가 대부분이라, depth-2에서는 event1과 동일한 이벤트를 최우선 후보로 쓰지 않는다.
-            # (State/Tx가 depth-1과 동일한 스냅샷이라 생기는 부작용의 표면 증상 완화용 가드 —
-            # 근본 해결(State Transition 모델)은 이번 범위 밖. weighted_score/probability_pct
-            # 자체는 그대로 두고, depth2_agg 안에서 어떤 항목을 고를지만 바꾼다 — 계산 로직 불변)
+            # 반복 증상 완화 가드 — 원인과 한계는 모듈 상단 docstring 참고.
+            # 계산 로직(weighted_score/probability_pct)은 그대로 두고, depth2_agg 안에서
+            # 어떤 항목을 고를지만 바꾼다.
             non_repeat = [(e, a) for e, a in depth2_agg.items() if e != event1]
             if non_repeat:
                 event2, agg2 = non_repeat[0]
