@@ -9,6 +9,15 @@
 
 reasoning.py의 MockReasoner/AnthropicReasoner 패턴을 그대로 따른다
 (LLM_BACKEND=mock|anthropic 환경변수로 전환).
+
+신규대출 경로 추가 (2026.8, Strategy Generator 연결)
+  기존 대출을 REFINANCE/PREPAY하는 경우(PortfolioSummaryInput)와, 기존 대출이 아예 없어
+  새로 자금을 조달하는 경우(NewLoanSummaryInput)는 "무엇과 비교하는지"의 프레임 자체가 다르다.
+  전자는 "지금 상태 유지 대비 얼마나 절감되는가"가 핵심이고, 후자는 "여러 조달 방법 중 뭐가
+  최선인가"가 핵심이라 "before/after"나 "절감액" 개념 자체가 없다. 억지로 같은 스키마에
+  끼워맞추면 없는 개념(예: npv_savings=0)이 실제 값처럼 보여 오해를 부를 수 있어, 별도
+  Input/Summarizer를 두되 출력 스키마(when/how_much/effect/comparison/next_action)와
+  검증가드(validate_summary_numbers)는 그대로 재사용한다.
 """
 
 import os
@@ -18,6 +27,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from .portfolio import PortfolioMetrics, ExistingLoan, RefinanceCandidate, LoanAction, classify_liquidity_risk, UserFinancialProfile
+from .strategy_generator import NewLoanMetrics
 
 
 SYSTEM_PROMPT = """당신은 청년 대상 부채 포트폴리오 재설계 결과를 설명하는 통역 엔진입니다.
@@ -275,5 +285,167 @@ def build_summary_input(
         second_best_desc=describe_combo(second) if second else None,
         second_best_npv_diff=(round(second.npv_total_cost - best.npv_total_cost) if second else None),
         second_best_monthly_diff=(second.monthly_payment_total - best.monthly_payment_total if second else None),
+        next_action_hint=next_action_hint,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 신규대출 경로 (기존 대출 없음 - Strategy Generator 연결)
+# ---------------------------------------------------------------------------
+
+NEW_LOAN_SYSTEM_PROMPT = """당신은 청년의 신규 자금조달 전략을 설명하는 통역 엔진입니다.
+(이 유저는 기존 대출이 없어 새로 자금이 필요해진 상황입니다 - "대환/절감"이 아니라
+"여러 조달 방법 중 무엇이 최선인지"를 설명하는 것이 핵심입니다.)
+
+절대 규칙:
+1. 당신에게 주어진 [계산된 숫자] 안에 있는 값만 사용하세요. 새로 만들거나 반올림 이상으로
+   바꾸지 마세요 (원 단위 정확히, %도 소수점 그대로).
+2. 계산되지 않은 정보(예: 정확한 신청 마감일)를 지어내지 마세요.
+3. "before/after"나 "절감액" 표현은 쓰지 마세요 - 기존 대출이 없어서 비교할 이전 상태 자체가
+   없습니다. 대신 "이 전략을 실행하면"이라는 프레임으로 서술하세요.
+4. 반드시 아래 5개 항목을 모두, 이 순서로, 이 JSON 스키마로만 채우세요. 다른 텍스트를
+   추가하지 마세요.
+
+{
+  "when": "언제 실행해야 하는지 (계산된 timing_basis 값을 그대로 서술)",
+  "how_much": "얼마나 (조달 방법과 금액을 구체적으로)",
+  "effect": "효과 (월상환액, 총비용(NPV), DSR - 전부 숫자 그대로)",
+  "comparison": "왜 2등 후보가 아닌 이 안인지 (총비용/월상환액 차이로 숫자 근거)",
+  "next_action": "바로 할 일 (신청 방법/필요서류 - 계산값에 있는 정보만)"
+}"""
+
+
+@dataclass
+class NewLoanSummaryInput:
+    """PortfolioSummaryInput의 신규대출 버전. 필드가 다른 이유는 클래스 상단 docstring 참고."""
+    user_name: str
+    event_name: str
+    action_desc: str
+    timing_basis: str
+    monthly_payment: int
+    npv_total_cost: float
+    dsr_pct: float
+    second_best_desc: Optional[str]
+    second_best_npv_diff: Optional[float]     # 양수 = 2등이 더 비쌈
+    second_best_monthly_diff: Optional[int]   # 양수 = 2등이 더 높음
+    next_action_hint: str
+
+    def allowed_numbers(self) -> set:
+        raw = [self.monthly_payment, self.npv_total_cost, self.dsr_pct]
+        if self.second_best_npv_diff is not None:
+            raw.append(self.second_best_npv_diff)
+        if self.second_best_monthly_diff is not None:
+            raw.append(self.second_best_monthly_diff)
+        numbers = set()
+        for n in raw:
+            if isinstance(n, float):
+                numbers.add(str(n))
+                numbers.add(str(int(n)))
+            else:
+                numbers.add(str(n))
+                numbers.add(str(abs(n)))
+                if abs(n) >= 10000:
+                    numbers.add(str(round(abs(n) / 10000)))
+
+        desc_text = self.action_desc + " " + (self.second_best_desc or "")
+        for m in re.findall(r"\d+(?:,\d{3})*(?:\.\d+)?", desc_text):
+            cleaned = m.replace(",", "")
+            numbers.add(cleaned)
+            if cleaned.isdigit() and int(cleaned) >= 10000:
+                numbers.add(str(round(int(cleaned) / 10000)))
+        return numbers
+
+
+def build_new_loan_summary_prompt(data: NewLoanSummaryInput) -> str:
+    return f"""[유저] {data.user_name}
+[확정 이벤트] {data.event_name}
+
+[계산된 숫자 - 이것만 사용할 것]
+- 추천 전략: {data.action_desc}
+- 실행 시점 근거: {data.timing_basis}
+- 월상환액: {data.monthly_payment:,}원
+- 총비용(NPV): {data.npv_total_cost:,.0f}원
+- DSR: {data.dsr_pct}%
+- 2등 후보: {data.second_best_desc or '없음'}
+  - 2등과의 총비용 차이: {f'{data.second_best_npv_diff:,.0f}원' if data.second_best_npv_diff is not None else '해당없음'} (양수=2등이 더 비쌈)
+  - 2등과의 월상환액 차이: {f'{data.second_best_monthly_diff:,}원' if data.second_best_monthly_diff is not None else '해당없음'} (양수=2등이 더 높음)
+- 다음 행동 정보: {data.next_action_hint}
+
+위 숫자만 사용해서 5개 항목 JSON으로 응답하세요."""
+
+
+class MockNewLoanSummarizer:
+    def summarize(self, data: NewLoanSummaryInput) -> dict:
+        if data.second_best_desc and data.second_best_npv_diff is not None:
+            comparison = f"2등({data.second_best_desc})은 총비용이 {abs(data.second_best_npv_diff):,.0f}원 더 들어 제외"
+        else:
+            comparison = "다른 실행가능한 대안 없음"
+        return {
+            "when": f"[MOCK] {data.timing_basis}",
+            "how_much": f"[MOCK] {data.action_desc}",
+            "effect": (
+                f"[MOCK] 월상환액 {data.monthly_payment:,}원, "
+                f"총비용(NPV) {data.npv_total_cost:,.0f}원, DSR {data.dsr_pct}%"
+            ),
+            "comparison": f"[MOCK] {comparison}",
+            "next_action": f"[MOCK] {data.next_action_hint}",
+        }
+
+
+class AnthropicNewLoanSummarizer:
+    def __init__(self, model: str = "claude-sonnet-4-6"):
+        self.model = model
+        try:
+            import anthropic
+            self._client = anthropic.Anthropic()
+        except ImportError:
+            raise RuntimeError("anthropic 패키지가 필요합니다: pip install anthropic --break-system-packages")
+
+    def summarize(self, data: NewLoanSummaryInput) -> dict:
+        prompt = build_new_loan_summary_prompt(data)
+        for attempt in range(2):
+            resp = self._client.messages.create(
+                model=self.model, max_tokens=1000, system=NEW_LOAN_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw_text = "".join(b.text for b in resp.content if hasattr(b, "text"))
+            cleaned = raw_text.replace("```json", "").replace("```", "").strip()
+            try:
+                result = json.loads(cleaned)
+            except json.JSONDecodeError:
+                continue
+            ok, bad_numbers = validate_summary_numbers(result, data.allowed_numbers())
+            if ok:
+                return result
+            prompt += f"\n\n[재생성 요청] 이전 응답에 허용되지 않은 숫자({bad_numbers})가 있었습니다. 계산된 숫자만 다시 사용하세요."
+        raise ValueError(f"LLM이 검증 통과하는 응답을 2회 시도에도 생성하지 못함: {bad_numbers}")
+
+
+def get_new_loan_summarizer():
+    backend = os.environ.get("LLM_BACKEND", "mock")
+    if backend == "anthropic":
+        return AnthropicNewLoanSummarizer()
+    return MockNewLoanSummarizer()
+
+
+def build_new_loan_summary_input(
+    user_name: str,
+    event_name: str,
+    best: NewLoanMetrics,
+    second: Optional[NewLoanMetrics],
+    next_action_hint: str,
+) -> NewLoanSummaryInput:
+    """agent_loop.py에서 select_best_new_loan_strategy() 결과를 받아 바로 이 함수에 넘기면 됨."""
+    return NewLoanSummaryInput(
+        user_name=user_name,
+        event_name=event_name,
+        action_desc=best.candidate.label,
+        timing_basis=f"'{event_name}' 이벤트 확정 시",
+        monthly_payment=best.monthly_payment,
+        npv_total_cost=best.npv_total_cost,
+        dsr_pct=best.dsr_pct,
+        second_best_desc=second.candidate.label if second else None,
+        second_best_npv_diff=(round(second.npv_total_cost - best.npv_total_cost) if second else None),
+        second_best_monthly_diff=(second.monthly_payment - best.monthly_payment if second else None),
         next_action_hint=next_action_hint,
     )
