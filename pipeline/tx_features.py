@@ -51,6 +51,8 @@ FURNITURE_KEYWORDS = ("이케아", "가구", "가전", "하이마트", "리빙",
 # 그 이벤트 자체는 이미 user_loans 테이블과 detect_independence()가 별도로 추적한다.
 # 포함하면 "독립해서 월세가 새로 발생한 것"이나 "신규 대출로 상환액이 늘어난 것"이
 # "소비 지출 증가"로 오인될 수 있어 제외한다.
+# "대출상환"은 여기서 빠지는 대신 debt_growth(아래) 전용 feature로 별도 추적한다 -
+# 소비 추세와 섞이면 안 되지만, "최근 대출부담이 늘고 있는가"는 그 자체로 생애주기 신호이기 때문.
 EXPENSE_EXCLUDE_CATEGORIES = ("대출상환", "월세")
 
 
@@ -65,6 +67,7 @@ class TransactionFeatures:
     income_growth: Optional[float]
     expense_growth: Optional[float]
     saving_growth: Optional[float]
+    debt_growth: Optional[float]
     cashflow_volatility: Optional[float]
     signals: List[str] = field(default_factory=list)
 
@@ -73,6 +76,7 @@ class TransactionFeatures:
             "income_growth": self.income_growth,
             "expense_growth": self.expense_growth,
             "saving_growth": self.saving_growth,
+            "debt_growth": self.debt_growth,
             "cashflow_volatility": self.cashflow_volatility,
             "signals": self.signals,
         }
@@ -111,6 +115,10 @@ def tx_features_dict_to_sentence(d: dict) -> str:
     saving_growth = d.get("saving_growth")
     if saving_growth is not None:
         parts.append(f"저축성 이체 {_direction(saving_growth)}({saving_growth:+.0%})")
+
+    debt_growth = d.get("debt_growth")
+    if debt_growth is not None:
+        parts.append(f"대출상환액 {_direction(debt_growth)}({debt_growth:+.0%})")
 
     cashflow_volatility = d.get("cashflow_volatility")
     if cashflow_volatility is not None:
@@ -206,7 +214,7 @@ def extract_transaction_features(
     숫자 자체를 LLM이 만들어내지 않는다.
     """
     if not txs:
-        return TransactionFeatures(None, None, None, None, [])
+        return TransactionFeatures(None, None, None, None, None, [])
 
     as_of = as_of or max(t.tx_date for t in txs)
 
@@ -218,13 +226,15 @@ def extract_transaction_features(
         txs,
         lambda t: t.amount < 0 and any(k in f"{t.counterparty} {t.memo or ''}" for k in SAVING_KEYWORDS),
     )
+    debt_monthly = _monthly_sum(txs, lambda t: t.amount < 0 and t.category == "대출상환")
 
     income_recent, income_prior = _recent_prior_avg(income_monthly, as_of, TREND_WINDOW_MONTHS)
     expense_recent, expense_prior = _recent_prior_avg(expense_monthly, as_of, TREND_WINDOW_MONTHS)
     saving_recent, saving_prior = _recent_prior_avg(saving_monthly, as_of, TREND_WINDOW_MONTHS)
+    debt_recent, debt_prior = _recent_prior_avg(debt_monthly, as_of, TREND_WINDOW_MONTHS)
 
     income_growth = _growth_ratio(income_recent, income_prior)
-    # 지출/저축은 출금(음수)이라 절대값 기준으로 growth 계산 (금액이 커질수록 |값|이 커짐)
+    # 지출/저축/대출상환은 출금(음수)이라 절대값 기준으로 growth 계산 (금액이 커질수록 |값|이 커짐)
     expense_growth = _growth_ratio(
         abs(expense_recent) if expense_recent is not None else None,
         abs(expense_prior) if expense_prior is not None else None,
@@ -233,6 +243,10 @@ def extract_transaction_features(
         abs(saving_recent) if saving_recent is not None else None,
         abs(saving_prior) if saving_prior is not None else None,
     )
+    debt_growth = _growth_ratio(
+        abs(debt_recent) if debt_recent is not None else None,
+        abs(debt_prior) if debt_prior is not None else None,
+    )
     volatility = _cashflow_volatility(txs, as_of, VOLATILITY_WINDOW_MONTHS)
     signals = _extract_qualitative_signals(txs)
 
@@ -240,6 +254,7 @@ def extract_transaction_features(
         income_growth=income_growth,
         expense_growth=expense_growth,
         saving_growth=saving_growth,
+        debt_growth=debt_growth,
         cashflow_volatility=volatility,
         signals=signals,
     )

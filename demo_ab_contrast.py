@@ -11,7 +11,7 @@
 
 from dotenv import load_dotenv
 load_dotenv()  # 최상위 .env: ANTHROPIC_API_KEY, LLM_BACKEND
-load_dotenv("backend/.env")  # backend/.env: COHORT_TOP_K, COLD_START_THRESHOLD (재령이 설정과 통일)
+load_dotenv("backend/.env")  # backend/.env: COHORT_TOP_K, COLD_START_THRESHOLD (Backend 설정과 통일)
 
 import os
 from pipeline.embedding import get_embedding_provider

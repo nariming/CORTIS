@@ -30,7 +30,7 @@ from .similarity import CohortMatch
 from .scenario_tree import Scenario
 
 # backend/.env 의 COLD_START_THRESHOLD 와 반드시 같은 값을 참조해야 한다.
-# (재령이 백엔드 설정과 여기 값이 따로 놀면, 콜드스타트 판단 기준이 두 곳에서 어긋날 수 있음)
+# (백엔드 설정과 여기 값이 따로 놀면, 콜드스타트 판단 기준이 두 곳에서 어긋날 수 있음)
 COLD_START_THRESHOLD = int(os.environ.get("COLD_START_THRESHOLD", "2"))
 
 SYSTEM_PROMPT = """당신은 청년 금융 생애주기 이벤트를 예측하는 분석 엔진입니다.
