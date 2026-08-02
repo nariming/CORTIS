@@ -48,6 +48,12 @@ class PredictRequest(BaseModel):
     include_ineligible: bool = False
 
 
+class PortfolioRequest(BaseModel):
+    user_id: str
+    event_name: str
+    event_confirmed: bool = True
+
+
 @app.get("/demo/latest-prediction/{user_id}")
 def demo_latest_prediction(user_id: str):
     """백엔드의 예측 이력(GET /users/{id}/predictions)에서 가장 최근 것만 반환.
@@ -178,3 +184,62 @@ def demo_predict(payload: PredictRequest):
         "prediction_id": saved["prediction_id"],
         "policy_match": match_result,
     }
+
+
+@app.post("/demo/portfolio")
+def demo_portfolio(payload: PortfolioRequest):
+    """포트폴리오 결정 레이어(NPV/DSR/스트레스DSR/대환·조기상환·신규대출 판단)를 실행해
+    JSON으로 반환한다.
+
+    agent_loop.CortisAgent.decide_portfolio()를 그대로 호출한다 — 이 엔드포인트는
+    콜백 대신 HTTP 응답으로 결과를 받아오는 얇은 어댑터일 뿐, 계산 로직은 전혀
+    새로 만들지 않는다 (portfolio.py/strategy_generator.py 원본 그대로).
+
+    /demo/predict 로 이미 저장된 가장 최근 예측을 evidence_count/필요자금 근거로 쓴다
+    (없으면 근거 없이 진행 - 신규대출 경로는 cash_need 없으면 자동으로 전략을 생략한다).
+    """
+    import requests
+    from dataclasses import asdict
+    from pipeline.agent_loop import CortisAgent, PredictionResult
+
+    try:
+        resp = requests.get(
+            f"{bc.BACKEND_BASE_URL}/users/{payload.user_id}/predictions",
+            params={"limit": 1}, timeout=10,
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"예측 이력 조회 실패: {e}")
+
+    if rows:
+        row = rows[0]
+        prediction = PredictionResult(
+            predictions=row["predictions_json"],
+            confidence_level=row["confidence_level"],
+            confidence_note=row["confidence_note"] or "",
+        )
+    else:
+        prediction = PredictionResult(predictions=[], confidence_level="low", confidence_note="예측 이력 없음")
+
+    # index/reasoner는 포트폴리오 계산 경로에서 쓰이지 않는다(예측/시나리오 단계 전용) -
+    # 이 엔드포인트는 이미 저장된 예측을 재사용하므로 None으로 둬도 안전하다.
+    agent = CortisAgent(index=None, reasoner=None)
+
+    try:
+        decision = agent.decide_portfolio(
+            user_id=payload.user_id,
+            event_name=payload.event_name,
+            prediction=prediction,
+            event_confirmed=payload.event_confirmed,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"포트폴리오 결정 실패: {e}")
+
+    if decision is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"'{payload.event_name}'에 대해 판단할 근거(필요자금 등)가 부족해 포트폴리오 전략을 생략했습니다.",
+        )
+
+    return asdict(decision)

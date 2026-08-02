@@ -175,6 +175,23 @@ class CortisAgent:
 
         return result
 
+    def decide_portfolio(
+        self,
+        user_id: str,
+        event_name: str,
+        prediction: PredictionResult,
+        event_confirmed: bool = True,
+    ) -> Optional[PortfolioDecisionResult]:
+        """_run_portfolio_decision()의 공개 진입점.
+
+        on_event_confirmed()는 콜백(on_portfolio_callback)으로만 결과를 흘려보내는데,
+        HTTP 엔드포인트처럼 반환값이 바로 필요한 호출부를 위해 얇게 감싼 것 — 콜백은
+        그대로 호출되고(부작용 동일), 반환값만 추가로 얻을 수 있다. 로직은 전혀 새로
+        만들지 않았다.
+        """
+        state = AgentState(user_id=user_id, confirmed_history=[])
+        return self._run_portfolio_decision(state, event_name, prediction, event_confirmed)
+
     @staticmethod
     def _top_prediction_timeline(prediction: PredictionResult):
         """예측된 '다음 이벤트' 후보 중 최상위(모순 없는 것 우선 정렬된 predictions[0])를
@@ -203,7 +220,7 @@ class CortisAgent:
         event_name: str,
         prediction: PredictionResult,
         event_confirmed: bool,
-    ):
+    ) -> Optional[PortfolioDecisionResult]:
         """새 이벤트가 확정/예측될 때마다 A(대출매칭)를 다시 불러 포트폴리오를 재계산.
 
         이게 "C가 감지할 때마다 A가 다시 도는 지속적 순환 구조"를 실제로 증명하는 부분.
@@ -213,8 +230,9 @@ class CortisAgent:
         profile = backend_client.build_profile_from_user_detail(user_detail)
         loans = backend_client.build_existing_loans_from_user_detail(user_detail)
         if not loans:
-            self._run_new_loan_decision(state, event_name, prediction, profile, user_detail, event_confirmed)
-            return
+            return self._run_new_loan_decision(
+                state, event_name, prediction, profile, user_detail, event_confirmed
+            )
 
         loan_match_response = backend_client.request_loan_match(
             state.user_id, event_types=[event_name], base_url=self.base_url,
@@ -248,18 +266,16 @@ class CortisAgent:
             # ⑦ Critic-Portfolio 연결: 콘솔 경고로만 끝내지 않고, "이 이벤트를 감당할 수
             # 있는 포트폴리오 조합이 하나도 없다"는 사실 자체를 유저가 볼 결과로 전달한다.
             reason_text = "; ".join(r for r in infeasible if r) or "제약조건(DSR/유동성)을 만족하는 조합 없음"
-            self.on_portfolio_callback(
-                state.user_id,
-                PortfolioDecisionResult(
-                    summary={}, watch_conditions=[], dsr_before=0.0, dsr_after=0.0,
-                    npv_savings=0, validated=True,
-                    feasibility_warning=(
-                        f"'{event_name}' 관련 대출 조정을 시도했으나 실행 가능한 조합이 없습니다 "
-                        f"({reason_text}). 현재 재정 상태 기준으로는 재검토가 필요합니다."
-                    ),
+            warning_result = PortfolioDecisionResult(
+                summary={}, watch_conditions=[], dsr_before=0.0, dsr_after=0.0,
+                npv_savings=0, validated=True,
+                feasibility_warning=(
+                    f"'{event_name}' 관련 대출 조정을 시도했으나 실행 가능한 조합이 없습니다 "
+                    f"({reason_text}). 현재 재정 상태 기준으로는 재검토가 필요합니다."
                 ),
             )
-            return
+            self.on_portfolio_callback(state.user_id, warning_result)
+            return warning_result
 
         dsr_before = round((sum(l.monthly_payment for l in loans) * 12 / profile.annual_income) * 100, 1)
 
@@ -297,6 +313,7 @@ class CortisAgent:
             validated=validated,
         )
         self.on_portfolio_callback(state.user_id, decision)
+        return decision
 
     def _run_new_loan_decision(
         self,
@@ -306,7 +323,7 @@ class CortisAgent:
         profile: "UserFinancialProfile",
         user_detail: dict,
         event_confirmed: bool,
-    ):
+    ) -> Optional[PortfolioDecisionResult]:
         """보유 대출이 없는 유저에게 예측된 이벤트(예: 독립)로 인해 새로 필요해지는
         자금 조달 전략을 제시한다. _run_portfolio_decision()의 '기존 대출 조정' 경로와는
         완전히 별개 경로 - 여기선 대체할 기존 대출이 없으므로 KEEP/REFINANCE/PREPAY가
@@ -321,7 +338,7 @@ class CortisAgent:
         cash_need = top.get("expected_cash_need_krw") if top else None
         if cash_need is None:
             print(f"  [AGENT] '{event_name}' 예상 필요자금 근거 부족 - 신규대출 전략 생략")
-            return
+            return None
 
         try:
             policy_match_response = backend_client.request_policy_match(
@@ -387,24 +404,22 @@ class CortisAgent:
             event_confirmed=event_confirmed,
         )
         if not candidates:
-            return
+            return None
 
         best, second, infeasible = select_best_new_loan_strategy(candidates, profile)
         if best is None:
             print(f"  [WARN] '{event_name}' 실행가능한 신규대출 전략 없음: {infeasible}")
             reason_text = "; ".join(r for r in infeasible if r) or "제약조건(DSR)을 만족하는 조달 방법 없음"
-            self.on_portfolio_callback(
-                state.user_id,
-                PortfolioDecisionResult(
-                    summary={}, watch_conditions=[], dsr_before=0.0, dsr_after=0.0,
-                    npv_savings=0, validated=True,
-                    feasibility_warning=(
-                        f"'{event_name}' 대비 자금조달 방법을 찾았으나 실행 가능한 안이 없습니다 "
-                        f"({reason_text}). 현재 재정 상태 기준으로는 재검토가 필요합니다."
-                    ),
+            warning_result = PortfolioDecisionResult(
+                summary={}, watch_conditions=[], dsr_before=0.0, dsr_after=0.0,
+                npv_savings=0, validated=True,
+                feasibility_warning=(
+                    f"'{event_name}' 대비 자금조달 방법을 찾았으나 실행 가능한 안이 없습니다 "
+                    f"({reason_text}). 현재 재정 상태 기준으로는 재검토가 필요합니다."
                 ),
             )
-            return
+            self.on_portfolio_callback(state.user_id, warning_result)
+            return warning_result
 
         summary_input = build_new_loan_summary_input(
             user_name=user_detail.get("name", state.user_id),
@@ -439,3 +454,4 @@ class CortisAgent:
             validated=validated,
         )
         self.on_portfolio_callback(state.user_id, decision)
+        return decision
