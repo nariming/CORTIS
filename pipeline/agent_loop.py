@@ -20,10 +20,14 @@ from .reasoning import Reasoner, PredictionResult
 from .scenario_tree import build_scenario_tree
 from . import backend_client
 from .portfolio import (
-    UserFinancialProfile, ExistingLoan, select_best_portfolio, build_watch_conditions,
-    compute_event_based_timeline,
+    UserFinancialProfile, ExistingLoan, RefinanceCandidate, select_best_portfolio,
+    build_watch_conditions, compute_event_based_timeline,
 )
-from .portfolio_summary import build_summary_input, get_summarizer, validate_summary_numbers
+from .portfolio_summary import (
+    build_summary_input, get_summarizer, validate_summary_numbers,
+    build_new_loan_summary_input, get_new_loan_summarizer,
+)
+from .strategy_generator import generate_new_loan_candidates, select_best_new_loan_strategy
 
 
 @dataclass
@@ -176,12 +180,14 @@ class CortisAgent:
         """새 이벤트가 확정/예측될 때마다 A(대출매칭)를 다시 불러 포트폴리오를 재계산.
 
         이게 "C가 감지할 때마다 A가 다시 도는 지속적 순환 구조"를 실제로 증명하는 부분.
+        보유 대출이 없으면(=대체할 기존 대출이 없으면) _run_new_loan_decision()으로 분기한다.
         """
         user_detail = backend_client.fetch_user_detail(state.user_id, self.base_url)
         profile = backend_client.build_profile_from_user_detail(user_detail)
         loans = backend_client.build_existing_loans_from_user_detail(user_detail)
         if not loans:
-            return  # 보유 대출 없으면 포트폴리오 재설계 대상 없음
+            self._run_new_loan_decision(state, event_name, prediction, profile, user_detail, event_confirmed)
+            return
 
         loan_match_response = backend_client.request_loan_match(
             state.user_id, event_types=[event_name], base_url=self.base_url,
@@ -242,6 +248,135 @@ class CortisAgent:
             dsr_before=dsr_before,
             dsr_after=best.dsr_pct,
             npv_savings=best.npv_savings_vs_keep,
+            validated=validated,
+        )
+        self.on_portfolio_callback(state.user_id, decision)
+
+    def _run_new_loan_decision(
+        self,
+        state: AgentState,
+        event_name: str,
+        prediction: PredictionResult,
+        profile: "UserFinancialProfile",
+        user_detail: dict,
+        event_confirmed: bool,
+    ):
+        """보유 대출이 없는 유저에게 예측된 이벤트(예: 독립)로 인해 새로 필요해지는
+        자금 조달 전략을 제시한다. _run_portfolio_decision()의 '기존 대출 조정' 경로와는
+        완전히 별개 경로 - 여기선 대체할 기존 대출이 없으므로 KEEP/REFINANCE/PREPAY가
+        아니라 '신규 실행 여부'를 판단한다.
+
+        event_confirmed를 그대로 전달받아 generate_new_loan_candidates()에 넘긴다 - 이벤트가
+        확정됐는지 여부에 따라 WAIT 후보를 넣을지 말지가 갈리기 때문 (테스트 중 발견: 확정된
+        이벤트에 "대기하라"는 후보를 넣으면 NPV 0으로 항상 이겨버려 실제 자금조달 추천이
+        무력화되는 문제가 있었음).
+        """
+        top = next((p for p in prediction.predictions if p["event"] == event_name), None)
+        cash_need = top.get("expected_cash_need_krw") if top else None
+        if cash_need is None:
+            print(f"  [AGENT] '{event_name}' 예상 필요자금 근거 부족 - 신규대출 전략 생략")
+            return
+
+        try:
+            policy_match_response = backend_client.request_policy_match(
+                user_id=state.user_id, prediction_id=None, event_types=[event_name],
+                persist=False, base_url=self.base_url,
+            )
+            policy_catalog = backend_client.fetch_policy_catalog(self.base_url)
+            # build_refinance_map_from_policy_match(existing_loans, ...)는 existing_loans를
+            # key로 딕셔너리를 만드는 구조라, 빈 리스트를 넘기면 정책 매칭이 몇 건이든
+            # 결과가 항상 빈 딕셔너리가 되는 버그가 있다(existing_loans가 없으니 순회 자체가
+            # 안 됨). 기존 대출이 없는 이 경로에서는 그 함수를 재사용하지 않고, 여기서
+            # 정책형 후보 리스트를 직접 뽑는다 - 판정 로직(자격/금리 필드)은 동일하게 유지.
+            catalog_by_id = {p["policy_id"]: p for p in policy_catalog}
+            policy_options = []
+            for group in policy_match_response:
+                for policy_match in group.get("policies", []):
+                    if policy_match.get("status") not in ("eligible", "newly_eligible"):
+                        continue
+                    catalog_entry = catalog_by_id.get(policy_match["policy_id"])
+                    if not catalog_entry or catalog_entry.get("benefit_rate_pct") is None:
+                        continue  # 금리 정보 없는 정책(지원금류)은 대출 후보가 아니므로 제외
+                    rate = catalog_entry["benefit_rate_pct"]
+                    policy_options.append(RefinanceCandidate(
+                        product_id=policy_match["policy_id"],
+                        product_name=policy_match["policy_name"] + " (정책형)",
+                        min_rate=rate,
+                        max_rate=rate,
+                        max_amount=cash_need,  # 기존 대출이 없어 balance로 근사 불가 -
+                                                # cash_need를 상한으로 대체 사용(보수적 근사)
+                        rate_type=catalog_entry.get("rate_type", "변동"),
+                    ))
+        except Exception as e:
+            print(f"  [WARN] 정책형 신규대출 후보 조회 실패: {e}")
+            policy_options = []
+
+        try:
+            loan_match_response = backend_client.request_loan_match(
+                state.user_id, event_types=[event_name], base_url=self.base_url,
+            )
+        except Exception as e:
+            print(f"  [WARN] KB 신규대출 후보 조회 실패: {e}")
+            loan_match_response = []
+
+        # (일반 KB 대출상품 쪽은 loan-match 응답 구조가 애초에 loan_id 딕셔너리가 아니라
+        # 이벤트별 그룹 리스트라서 이 문제가 없다 - 아래 그대로 flatten만 하면 됨)
+        general_options = [
+            RefinanceCandidate(
+                product_id=p["product_id"], product_name=p["product_name"],
+                min_rate=p["min_rate"], max_rate=p["max_rate"], max_amount=p["max_amount"],
+                rate_type=p.get("rate_type", "변동"),
+            )
+            for group in loan_match_response for p in group.get("loan_products", [])
+            if p.get("status") in ("eligible", "newly_eligible")
+        ]
+
+        candidates = generate_new_loan_candidates(
+            event_name=event_name,
+            cash_need_krw=cash_need,
+            liquid_assets_krw=profile.liquid_assets_krw,
+            policy_candidates=policy_options,
+            general_loan_candidates=general_options,
+            event_confirmed=event_confirmed,
+        )
+        if not candidates:
+            return
+
+        best, second, infeasible = select_best_new_loan_strategy(candidates, profile)
+        if best is None:
+            print(f"  [WARN] '{event_name}' 실행가능한 신규대출 전략 없음: {infeasible}")
+            return
+
+        summary_input = build_new_loan_summary_input(
+            user_name=user_detail.get("name", state.user_id),
+            event_name=event_name,
+            best=best,
+            second=second,
+            next_action_hint="정확한 신청 방법·필요서류는 해당 상품 안내 페이지에서 최종 확인 필요",
+        )
+        summarizer = get_new_loan_summarizer()
+        summary = summarizer.summarize(summary_input)
+        validated, bad_numbers = validate_summary_numbers(summary, summary_input.allowed_numbers())
+        if not validated:
+            print(f"  [WARN] LLM 출력에 검증 안 된 숫자 발견: {bad_numbers} (사용자에게 노출 전 재검토 필요)")
+
+        # watch_conditions: portfolio.build_watch_conditions()는 PortfolioMetrics.combo(REFINANCE
+        # 여부)를 참조하는데 NewLoanMetrics엔 그 구조가 없어 그대로 재사용할 수 없다. 신규대출
+        # 경로에 맞는 최소 버전을 직접 구성 - 기존 함수와 동일한 원칙(상황 변하면 재계산 필요)만 유지.
+        watch_conditions = [
+            f"'{event_name}' 확정 시점의 자격/금리 기준 추천 - 실제 신청 시점에 조건 재확인 필요",
+            "다음 생애주기 이벤트가 새로 확정될 때마다 전략 재계산",
+        ]
+        if best.candidate.action == "CASH_ONLY":
+            watch_conditions.append("유동자산으로 충당 - 이후 예상치 못한 지출 발생 시 재검토 필요")
+
+        decision = PortfolioDecisionResult(
+            summary=summary,
+            watch_conditions=watch_conditions,
+            dsr_before=0.0,  # 기존 대출 자체가 없어 '이전 DSR' 개념이 없음 - 0으로 표기
+            dsr_after=best.dsr_pct,
+            npv_savings=0,   # '유지 대비 절감액' 개념이 없음(비교할 기존 상태가 없음) -
+                             # 실제 총비용은 summary 텍스트(npv_total_cost)에 이미 담겨 있음
             validated=validated,
         )
         self.on_portfolio_callback(state.user_id, decision)
